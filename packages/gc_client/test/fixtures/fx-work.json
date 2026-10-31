@@ -1,0 +1,13 @@
+{
+  "id": "fx-work",
+  "title": "A work bead",
+  "description": "What to build.",
+  "design": "## Touches\n- `lib/a.dart` — created",
+  "acceptance_criteria": "- [ ] AC-1 — it works",
+  "notes": "A note.",
+  "status": "open",
+  "issue_type": "task",
+  "metadata": {
+    "validation_plan": "bash tests/run.sh"
+  }
+}

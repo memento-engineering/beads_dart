@@ -1,0 +1,4 @@
+[
+  {"id": "fx-work", "title": "A work bead", "status": "open", "issue_type": "task"},
+  {"id": "fx-prior", "title": "An earlier attempt", "status": "closed", "issue_type": "task"}
+]

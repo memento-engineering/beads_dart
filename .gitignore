@@ -1,0 +1,5 @@
+# Dart (pub): tool state and build output are never tracked. Every package here is a library a
+# consumer resolves for itself, so no pubspec.lock is committed.
+.dart_tool/
+build/
+pubspec.lock

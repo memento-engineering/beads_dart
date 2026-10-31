@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.12.2
+      - run: dart pub get
+      - run: dart analyze --fatal-infos
+      - run: dart format --set-exit-if-changed .
+      - name: dart test
+        run: |
+          for p in packages/*/; do
+            [ -d "$p/test" ] || continue
+            (cd "$p" && dart test)
+          done

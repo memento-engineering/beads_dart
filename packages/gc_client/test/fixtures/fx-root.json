@@ -1,0 +1,15 @@
+[
+  {
+    "id": "fx-root",
+    "title": "A workflow root",
+    "status": "in_progress",
+    "issue_type": "task",
+    "metadata": {
+      "gc.kind": "workflow",
+      "example.round": 1,
+      "example.ready": true,
+      "example.blank": null,
+      "example.list": ["a", "b"]
+    }
+  }
+]

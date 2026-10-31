@@ -1,0 +1,14 @@
+[
+  {
+    "id": "fx-step",
+    "title": "A step bead",
+    "status": "in_progress",
+    "issue_type": "task",
+    "started_at": "2026-10-25T10:00:00Z",
+    "metadata": {
+      "gc.root_bead_id": "fx-root",
+      "gc.attempt": "2",
+      "gc.kind": "ralph"
+    }
+  }
+]
