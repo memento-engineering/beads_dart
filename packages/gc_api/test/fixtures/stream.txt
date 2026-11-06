@@ -1,0 +1,11 @@
+id: 101
+event: event
+data: {"seq":101,"type":"order.fired","ts":"2026-11-05T19:46:40.34327-06:00","actor":"controller","subject":"dolt-health","payload":{}}
+
+event: heartbeat
+data: {"timestamp":"2026-11-06T01:46:42Z"}
+
+id: 102
+event: event
+data: {"seq":102,"type":"order.completed","ts":"2026-11-05T19:46:41.1-06:00","actor":"controller","subject":"dolt-health","payload":{}}
+

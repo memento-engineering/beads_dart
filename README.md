@@ -6,7 +6,8 @@ grid). Each package lives under `packages/` and is versioned and tagged on its o
 | Package | What it is | Status |
 | --- | --- | --- |
 | `gc_client` | The `GcClient` seam over a Gas City city: beads, convoys, mail, hook claims and sling, with a transport that runs `gc` and an in-process fake (`package:gc_client/testing.dart`). | 0.1.0, from houston |
-| `bdp` | The Bead Protocol (BDP v0) client, its SQLite authority, and `serve_bd`, a BDP server over a bd store. | 0.1.0-dev.2, from memento-engineering/grid |
+| `gc_api` | A client for the Gas City supervisor's HTTP API: health, cities, a city's status and its event log, paged and live. Every platform, the web included. | 0.1.0-dev.1 |
+| `bdp` | The Bead Protocol (BDP v0) client (`package:bdp/client.dart`, every platform), its SQLite authority, and `serve_bd`, a BDP server over a bd store. | 0.1.0-dev.3, from memento-engineering/grid |
 | `beads_dart` | The predecessor bd client. | planned, from memento-engineering/the_grid |
 
 ## Depending on a package
@@ -25,6 +26,11 @@ dependencies:
 ```
 
 `tag_pattern` needs Dart 3.9 or later.
+
+A package here that depends on another package here declares it the same way, by git and
+`tag_pattern`, never as a hosted dependency: inside this workspace the member wins, and a
+consumer that takes the package by git resolves its sibling by git too. So a package that needs
+a sibling's unreleased change waits for that sibling's tag.
 
 ## Releasing
 
