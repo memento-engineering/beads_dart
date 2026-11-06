@@ -1,0 +1,11 @@
+# The suites a plain `dart test` runs: the generated test/all_test.dart,
+# then each file run apart in its own isolate. tool/test_entry.dart writes
+# this block; do not edit it.
+paths:
+  - test/all_test.dart
+
+tags:
+  # Launches the bdptest reference server under node; self-skips when node or
+  # BDPTEST_MAIN is absent.
+  live:
+    timeout: 60s

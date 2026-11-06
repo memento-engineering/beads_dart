@@ -6,7 +6,7 @@ grid). Each package lives under `packages/` and is versioned and tagged on its o
 | Package | What it is | Status |
 | --- | --- | --- |
 | `gc_client` | The `GcClient` seam over a Gas City city: beads, convoys, mail, hook claims and sling, with a transport that runs `gc` and an in-process fake (`package:gc_client/testing.dart`). | 0.1.0, from houston |
-| `bdp` | The Bead Protocol (BDP v0) client, its SQLite authority, and a BDP server over a bd store. | planned, from memento-engineering/grid |
+| `bdp` | The Bead Protocol (BDP v0) client, its SQLite authority, and `serve_bd`, a BDP server over a bd store. | 0.1.0-dev.2, from memento-engineering/grid |
 | `beads_dart` | The predecessor bd client. | planned, from memento-engineering/the_grid |
 
 ## Depending on a package
@@ -37,5 +37,11 @@ A release of a package is its `version:` bump in `packages/<name>/pubspec.yaml`,
 dart pub get
 dart analyze --fatal-infos
 dart format --set-exit-if-changed .
-(cd packages/gc_client && dart test)
+for p in packages/*/; do (cd "$p" && dart test); done
 ```
+
+`tool/test_entry.dart` writes a package's generated `test/all_test.dart` and the `paths:` block of
+its `dart_test.yaml`; run it after adding, moving or deleting a test file in a package that has
+one (`dart run tool/test_entry.dart`, `--check` to verify).
+
+The workspace analyzes with the `genesis_lint` plugin (`analysis_options.yaml`).

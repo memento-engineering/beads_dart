@@ -1,6 +1,13 @@
 include: package:lints/recommended.yaml
 
+plugins:
+  genesis_lint: ^0.3.0-dev.1
+
 analyzer:
+  # A lint probe copies its fixtures into a package's build/ to analyze them;
+  # a copy a killed run leaves behind must never fail the workspace gate.
+  exclude:
+    - packages/*/build/**
   language:
     strict-casts: true
     strict-inference: true
