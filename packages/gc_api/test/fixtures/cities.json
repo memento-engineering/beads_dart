@@ -1,0 +1,1 @@
+{"items":[{"name":"demo","path":"/home/gc/cities/demo","running":true},{"name":"spare","path":"/home/gc/cities/spare","running":false,"status":"stopped","error":"city.toml: no such file"}],"total":2}

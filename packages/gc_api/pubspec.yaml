@@ -1,0 +1,23 @@
+name: gc_api
+description: A client for the Gas City supervisor's HTTP API - its cities, a city's status and its event stream.
+version: 0.1.0-dev.1
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  # A git dependency, not a hosted one, so a consumer that takes gc_api by git
+  # resolves bdp the same way; inside this workspace the member wins.
+  bdp:
+    git:
+      url: https://github.com/memento-engineering/beads_dart.git
+      path: packages/bdp
+      tag_pattern: bdp-v{{version}}
+    version: ^0.1.0-dev.3
+  http: ^1.6.0
+  meta: ^1.15.0
+
+dev_dependencies:
+  test: ^1.25.0

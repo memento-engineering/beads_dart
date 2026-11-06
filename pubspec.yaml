@@ -6,6 +6,7 @@ environment:
 
 workspace:
   - packages/bdp
+  - packages/gc_api
   - packages/gc_client
 
 dev_dependencies:
