@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-dev.3
 
+- `package:bdp/client.dart` is the client alone: everything `bdp.dart` exports but the
+  authority, so it reaches neither `dart:io` nor SQLite and compiles for the web. `bdp.dart`
+  is unchanged. bdp now lives in memento-engineering/beads_dart.
 - The bd authority serves the Work Scope's writes (grid-1c4c). An update of exactly
   `/description`, `/design` and `/acceptance_criteria` at an `expectedRevision` is the guarded
   text update, one `bd update` of all three; every other change naming a whole-text field, the

@@ -8,6 +8,15 @@ The wire types are typed from the normative schema bundle (`bdp-v0.schema.json`)
 client keeps the wire shapes exact and does not chase conformance. See
 `the-grid-speaks-bdp-work-and-execution-are-two-scopes` (D6) for the subset.
 
+## Libraries
+
+| Library | What it is |
+| --- | --- |
+| `package:bdp/client.dart` | The client alone, for any platform, the web included: everything below but the authority. |
+| `package:bdp/bdp.dart` | The client and the SQLite authority with its HTTP handler. Needs `dart:io`. |
+| `package:bdp/bd.dart` | A bd store served as a Scope over bd's CLI (`serve_bd`). Needs `dart:io`. |
+| `package:bdp/testing.dart` | Test support. |
+
 ## Shape
 
 | Piece | What it is |

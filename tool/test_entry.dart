@@ -20,31 +20,12 @@ library;
 import 'dart:io';
 
 /// The packages that carry a generated entry, in the order the gate runs them.
-const kTestEntryPackages = ['bdp', 'grid_core', 'grid', 'grid_workflows'];
-
-const _asyncMain =
-    'its main awaits a loopback probe before it declares its tests, and a '
-    "group's body may not be async";
+const kTestEntryPackages = ['bdp'];
 
 /// The test files that run apart, each in its own isolate: by package, then
 /// by path relative to `test/`, with the reason the file cannot run beside
 /// the others.
-const Map<String, Map<String, String>> kRunApart = {
-  'grid_core': {
-    'control/control_plane_test.dart': _asyncMain,
-    'control/dispose_test.dart': _asyncMain,
-    'control/stream_test.dart': _asyncMain,
-  },
-  'grid': {'status_command_test.dart': _asyncMain},
-  'grid_workflows': {
-    'circuits/land_live_test.dart':
-        'its live landings, run unconfined, fail beside the other files and '
-        'pass in an isolate of their own',
-    'circuits/ratification_live_test.dart':
-        'its two live ratifications, run unconfined, fail beside the other '
-        'files and pass in an isolate of their own',
-  },
-};
+const Map<String, Map<String, String>> kRunApart = {};
 
 /// The entry's path, relative to the package.
 const _entry = 'test/all_test.dart';
