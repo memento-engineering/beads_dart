@@ -16,6 +16,7 @@ jobs:
       - run: dart pub get
       - run: dart analyze --fatal-infos
       - run: dart format --set-exit-if-changed .
+      - run: dart run tool/test_entry.dart --check
       - name: dart test
         run: |
           for p in packages/*/; do

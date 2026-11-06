@@ -124,4 +124,47 @@ void main() {
       expect(text, isNot(contains(forbidden)), reason: forbidden);
     }
   });
+
+  test('client.dart exports what bdp.dart does but the authority, and '
+      'reaches no authority file, dart:io, dart:ffi, SQLite or shelf', () {
+    final client = _directives(File('${_package.path}/lib/client.dart'));
+    final full = _directives(File('${_package.path}/lib/bdp.dart'));
+    expect(
+      client.toSet(),
+      full.where((uri) => !uri.startsWith('src/authority/')).toSet(),
+    );
+    final reachable = _reachable(['lib/client.dart']);
+    expect(
+      reachable.where((path) => path.startsWith('lib/src/authority/')),
+      isEmpty,
+    );
+    final platform = [
+      for (final path in reachable)
+        for (final uri in _directives(File('${_package.path}/$path')))
+          if (uri == 'dart:io' ||
+              uri == 'dart:ffi' ||
+              uri.startsWith('package:sqlite3/') ||
+              uri.startsWith('package:shelf/'))
+            '$path: $uri',
+    ];
+    expect(platform, isEmpty);
+  });
+
+  test('a program importing client.dart compiles for the web', () async {
+    final out = await Directory.systemTemp.createTemp('bdp-web-');
+    addTearDown(() => out.delete(recursive: true));
+    final entry = File('${_package.path}/test/support/web_entry.dart');
+    final compiled = await Process.run(Platform.resolvedExecutable, [
+      'compile',
+      'js',
+      entry.path,
+      '-o',
+      '${out.path}/web_entry.js',
+    ], workingDirectory: _package.path);
+    expect(
+      compiled.exitCode,
+      0,
+      reason: '${compiled.stdout}${compiled.stderr}',
+    );
+  });
 }

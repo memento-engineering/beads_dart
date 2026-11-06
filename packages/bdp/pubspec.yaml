@@ -1,6 +1,6 @@
 name: bdp
 description: The Dart BDP client and authority library.
-version: 0.1.0-dev.2
+version: 0.1.0-dev.3
 publish_to: none
 resolution: workspace
 
