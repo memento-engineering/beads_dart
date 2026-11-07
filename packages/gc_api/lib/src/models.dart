@@ -292,3 +292,256 @@ final class EventPage {
 
   final List<String> partialErrors;
 }
+
+/// One page of a city's sessions (`GET /v0/city/{name}/sessions`,
+/// `ListBodySessionResponse`).
+@immutable
+final class SessionPage {
+  SessionPage._(JsonFields r)
+    : json = r.json,
+      items = [for (final item in r.list('items')) GcSession.fromJson(item)],
+      total = r.integer('total'),
+      nextCursor = switch (r.optionalString('next_cursor')) {
+        '' => null,
+        final cursor => cursor,
+      },
+      partial = r.optionalBoolean('partial') ?? false,
+      partialErrors = r.strings('partial_errors');
+
+  factory SessionPage.fromJson(Object? json) =>
+      SessionPage._(JsonFields.of(json, 'sessions'));
+
+  /// The whole body as the server wrote it.
+  final Map<String, Object?> json;
+
+  final List<GcSession> items;
+
+  /// The number of sessions that match the query.
+  final int total;
+
+  /// The cursor of the next page; null on the last page.
+  final String? nextCursor;
+
+  /// Whether some sessions could not be read; [partialErrors] says which.
+  final bool partial;
+
+  final List<String> partialErrors;
+}
+
+/// One session of a city (`GET /v0/city/{name}/session/{id}`,
+/// `SessionResponse`).
+///
+/// The members a client app shows are typed; the rest of the body is in
+/// [json].
+@immutable
+final class GcSession {
+  GcSession._(JsonFields r)
+    : json = r.json,
+      id = r.string('id'),
+      template = r.string('template'),
+      state = r.string('state'),
+      title = r.string('title'),
+      provider = r.string('provider'),
+      sessionName = r.string('session_name'),
+      createdAt = r.instant('created_at'),
+      attached = r.boolean('attached'),
+      running = r.boolean('running'),
+      alias = r.optionalString('alias'),
+      displayName = r.optionalString('display_name'),
+      rig = r.optionalString('rig'),
+      pool = r.optionalString('pool'),
+      kind = r.optionalString('kind'),
+      model = r.optionalString('model'),
+      activity = r.optionalString('activity'),
+      activeBead = r.optionalString('active_bead'),
+      lastActive = r.optionalInstant('last_active'),
+      lastOutput = r.optionalString('last_output'),
+      reason = r.optionalString('reason'),
+      contextPct = r.optionalInteger('context_pct'),
+      contextWindow = r.optionalInteger('context_window'),
+      workDir = r.optionalString('work_dir'),
+      submissionCapabilities = switch (r.optionalObject(
+        'submission_capabilities',
+      )) {
+        final c? => SubmissionCapabilities._(c),
+        null => null,
+      };
+
+  factory GcSession.fromJson(Object? json) =>
+      GcSession._(JsonFields.of(json, 'session'));
+
+  /// The whole body as the server wrote it.
+  final Map<String, Object?> json;
+
+  final String id;
+
+  /// The agent template it runs, e.g. `demo/worker`.
+  final String template;
+
+  /// Its lifecycle state, e.g. `active` or `closed`.
+  final String state;
+
+  final String title;
+
+  /// The agent provider, e.g. `claude`.
+  final String provider;
+
+  /// The terminal session's name.
+  final String sessionName;
+
+  final DateTime createdAt;
+
+  /// Whether a human terminal is attached.
+  final bool attached;
+
+  final bool running;
+
+  final String? alias;
+
+  final String? displayName;
+
+  final String? rig;
+
+  final String? pool;
+
+  final String? kind;
+
+  final String? model;
+
+  /// What it is doing now, e.g. `working`.
+  final String? activity;
+
+  /// The id of the bead it works on.
+  final String? activeBead;
+
+  final DateTime? lastActive;
+
+  final String? lastOutput;
+
+  final String? reason;
+
+  /// How much of its context window it has used, in percent.
+  final int? contextPct;
+
+  final int? contextWindow;
+
+  final String? workDir;
+
+  final SubmissionCapabilities? submissionCapabilities;
+
+  @override
+  String toString() => 'GcSession($id $state)';
+}
+
+/// What a session accepts while it works (`SubmissionCapabilities`).
+@immutable
+final class SubmissionCapabilities {
+  SubmissionCapabilities._(JsonFields r)
+    : json = r.json,
+      supportsFollowUp = r.boolean('supports_follow_up'),
+      supportsInterruptNow = r.boolean('supports_interrupt_now');
+
+  /// The whole object as the server wrote it.
+  final Map<String, Object?> json;
+
+  final bool supportsFollowUp;
+
+  final bool supportsInterruptNow;
+}
+
+/// The sessions of a city waiting on a human (`GET /v0/city/{name}/pending`,
+/// `ListBodyCityPendingEntry`).
+@immutable
+final class PendingPage {
+  PendingPage._(JsonFields r)
+    : json = r.json,
+      items = [
+        for (final item in r.list('items'))
+          PendingEntry._(JsonFields.of(item, 'pending entry')),
+      ],
+      total = r.integer('total'),
+      partial = r.optionalBoolean('partial') ?? false;
+
+  factory PendingPage.fromJson(Object? json) =>
+      PendingPage._(JsonFields.of(json, 'pending'));
+
+  /// The whole body as the server wrote it.
+  final Map<String, Object?> json;
+
+  final List<PendingEntry> items;
+
+  final int total;
+
+  final bool partial;
+}
+
+/// A session waiting on a human (`CityPendingEntry`).
+@immutable
+final class PendingEntry {
+  PendingEntry._(JsonFields r)
+    : json = r.json,
+      sessionId = r.string('session_id'),
+      requestId = r.string('request_id'),
+      kind = r.string('kind');
+
+  /// The whole entry as the server wrote it.
+  final Map<String, Object?> json;
+
+  final String sessionId;
+
+  final String requestId;
+
+  /// What it waits for, e.g. `tool-approval`.
+  final String kind;
+}
+
+/// One session's pending interaction
+/// (`GET /v0/city/{name}/session/{id}/pending`, `SessionPendingResponse`).
+@immutable
+final class SessionPending {
+  SessionPending._(JsonFields r)
+    : json = r.json,
+      supported = r.boolean('supported'),
+      pending = switch (r.optionalObject('pending')) {
+        final p? => PendingInteraction._(p),
+        null => null,
+      };
+
+  factory SessionPending.fromJson(Object? json) =>
+      SessionPending._(JsonFields.of(json, 'session pending'));
+
+  /// The whole body as the server wrote it.
+  final Map<String, Object?> json;
+
+  /// Whether the session's provider reports pending interactions at all.
+  final bool supported;
+
+  /// What the session waits on; null when it waits on nothing.
+  final PendingInteraction? pending;
+}
+
+/// What a session asks a human (`PendingInteraction`).
+@immutable
+final class PendingInteraction {
+  PendingInteraction._(JsonFields r)
+    : json = r.json,
+      requestId = r.string('request_id'),
+      kind = r.string('kind'),
+      prompt = r.optionalString('prompt'),
+      options = r.list('options'),
+      metadata = r.optionalObject('metadata')?.json ?? const {};
+
+  /// The whole object as the server wrote it.
+  final Map<String, Object?> json;
+
+  final String requestId;
+
+  final String kind;
+
+  final String? prompt;
+
+  /// The answers it offers; empty when it offers none.
+  final List<Object?> options;
+
+  final Map<String, Object?> metadata;
+}

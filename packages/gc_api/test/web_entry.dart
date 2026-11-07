@@ -4,5 +4,15 @@
 import 'package:gc_api/gc_api.dart';
 
 void main() {
-  if (const [GcApi, GcCity, GcEvent].isEmpty) throw StateError('unreachable');
+  if (const [
+    GcApi,
+    GcCity,
+    GcEvent,
+    SessionPage,
+    GcSession,
+    PendingPage,
+    SessionPending,
+  ].isEmpty) {
+    throw StateError('unreachable');
+  }
 }

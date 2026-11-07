@@ -127,6 +127,22 @@ final reads = <String, (String, String, void Function(Object?))>{
   ),
   'status.json': ('get', '/v0/city/{cityName}/status', CityStatus.fromJson),
   'events.json': ('get', '/v0/city/{cityName}/events', EventPage.fromJson),
+  'sessions.json': (
+    'get',
+    '/v0/city/{cityName}/sessions',
+    SessionPage.fromJson,
+  ),
+  'session.json': (
+    'get',
+    '/v0/city/{cityName}/session/{id}',
+    GcSession.fromJson,
+  ),
+  'pending.json': ('get', '/v0/city/{cityName}/pending', PendingPage.fromJson),
+  'session_pending.json': (
+    'get',
+    '/v0/city/{cityName}/session/{id}/pending',
+    SessionPending.fromJson,
+  ),
 };
 
 void main() {
@@ -175,6 +191,14 @@ void main() {
     expect(
       parameters(op, 'query'),
       containsAll(['cursor', 'limit', 'type', 'actor', 'since']),
+    );
+  });
+
+  test('the session list takes the filters the client sends', () {
+    final op = operation('get', '/v0/city/{cityName}/sessions');
+    expect(
+      parameters(op, 'query'),
+      containsAll(['cursor', 'limit', 'state', 'template']),
     );
   });
 

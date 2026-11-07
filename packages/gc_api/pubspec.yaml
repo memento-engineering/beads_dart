@@ -1,5 +1,5 @@
 name: gc_api
-description: A client for the Gas City supervisor's HTTP API - its cities, a city's status and its event stream.
+description: A client for the Gas City supervisor's HTTP API - its cities, a city's status, sessions, pending interactions and event stream.
 version: 0.1.0-dev.1
 publish_to: none
 resolution: workspace
