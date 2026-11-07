@@ -109,6 +109,42 @@ final class GcCity {
     EventPage.fromJson,
   );
 
+  /// `GET /v0/city/{name}/sessions`: one page of the city's sessions.
+  ///
+  /// [cursor] is a page's [SessionPage.nextCursor]; [state] and [template]
+  /// filter by exact match.
+  Future<SessionPage> sessions({
+    String? cursor,
+    int? limit,
+    String? state,
+    String? template,
+  }) => _api._get(
+    _uri(
+      ['sessions'],
+      {
+        'cursor': ?cursor,
+        'limit': ?limit?.toString(),
+        'state': ?state,
+        'template': ?template,
+      },
+    ),
+    SessionPage.fromJson,
+  );
+
+  /// `GET /v0/city/{name}/session/{id}`: one session. [id] is sent as one
+  /// path segment, escaped.
+  Future<GcSession> session(String id) =>
+      _api._get(_uri(['session', id]), GcSession.fromJson);
+
+  /// `GET /v0/city/{name}/pending`: the sessions waiting on a human.
+  Future<PendingPage> pending() =>
+      _api._get(_uri(['pending']), PendingPage.fromJson);
+
+  /// `GET /v0/city/{name}/session/{id}/pending`: what the session [id]
+  /// waits on, if anything. [id] is sent as one path segment, escaped.
+  Future<SessionPending> sessionPending(String id) =>
+      _api._get(_uri(['session', id, 'pending']), SessionPending.fromJson);
+
   /// `GET /v0/city/{name}/events/stream`: the city's events as they happen,
   /// oldest first.
   ///
