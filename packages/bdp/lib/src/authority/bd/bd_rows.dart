@@ -4,13 +4,22 @@
 /// **What a read carries.** `bd list --json` leaves a field out of a row
 /// when it is empty, so a row without a field does not by itself say
 /// whether the bead's field is empty or the list path does not carry it.
-/// A field bd omits when empty ([bdOmittedWhenEmpty]) is carried, for every
-/// row of one read, only when that read evidences it: at least one row of
-/// the same call holds a value for it ([bdHolds]). Then a row without a
-/// value holds it empty. A field no row of the read holds a value for is
-/// left out of every bead, so it reads unknown, never empty. The evidence is
-/// taken afresh on every read. Dependencies are carried by their own rule:
-/// a row that lists none carries none only when bd counts none.
+/// The text fields ([bdTextFields]) are carried as one group: when any row
+/// of the read holds a value ([bdHolds]) for any of them ([bdCarriesText]),
+/// every bead of the read carries all five, and a row that leaves one out
+/// holds it as empty text. A read where no row holds any text field carries
+/// none of them, so they read unknown. Every other field bd omits when empty
+/// (`external_ref`, `await_id`, `close_reason` and `metadata`) is carried
+/// only when some row of the same read holds a value for that field
+/// ([bdEvidencedFields]); otherwise it is left out of every bead and reads
+/// unknown, never empty. The evidence is taken afresh on every read.
+/// Dependencies are carried by their own rule: a row that lists none carries
+/// none only when bd counts none.
+///
+/// The grouped text fields are the ruling
+/// `beads_dart#the-bd-authority-reads-a-text-field-bd-omits-as-empty-when-its-read-carries-text`,
+/// which amends `grid#the-work-scope-authority-projects-bd-until-bd-speaks-bdp`
+/// D2 for the text fields only.
 library;
 
 import '../json_text.dart';
@@ -42,8 +51,9 @@ const bdScalarFields = [
   'updated_at',
 ];
 
-/// The text fields bd omits when empty: carried as empty text when the
-/// read evidences them.
+/// The text fields bd omits when empty, carried as one group: as the row's
+/// value or empty text on every bead of a read that carries text
+/// ([bdCarriesText]), on none otherwise.
 const bdTextFields = [
   'title',
   'description',
@@ -52,11 +62,14 @@ const bdTextFields = [
   'notes',
 ];
 
-/// The other fields bd omits when empty: carried as null (`metadata` as an
-/// empty map) when the read evidences them.
+/// The other fields bd omits when empty: each carried as null (`metadata` as
+/// an empty map) when the read evidences that field itself
+/// ([bdEvidencedFields]).
 const bdOptionalFields = ['external_ref', 'await_id', 'close_reason'];
 
-/// The fields `bd list --json` leaves out of a row when they are empty.
+/// The fields `bd list --json` leaves out of a row when they are empty: the
+/// text fields among them follow [bdCarriesText], the rest
+/// [bdEvidencedFields].
 const bdOmittedWhenEmpty = {...bdTextFields, ...bdOptionalFields, 'metadata'};
 
 /// Whether [value], a field of a row, evidences the list path carries its
@@ -69,11 +82,20 @@ bool bdHolds(Object? value) => switch (value) {
   _ => true,
 };
 
-/// The fields of [bdOmittedWhenEmpty] that [rows], one read, evidence.
+/// Whether [rows], one read, carry the text fields: some row holds a value
+/// for one of them.
+bool bdCarriesText(List<Object?> rows) => rows.any(
+  (row) =>
+      row is Map<String, Object?> &&
+      bdTextFields.any((field) => bdHolds(row[field])),
+);
+
+/// The fields of [bdOptionalFields] and `metadata` that [rows], one read,
+/// evidence, each by its own values.
 Set<String> bdEvidencedFields(List<Object?> rows) => {
   for (final row in rows)
     if (row is Map<String, Object?>)
-      for (final field in bdOmittedWhenEmpty)
+      for (final field in const {...bdOptionalFields, 'metadata'})
         if (bdHolds(row[field])) field,
 };
 
@@ -94,6 +116,7 @@ typedef BdRead = ({
 /// type: a read that cannot be carried whole is not carried at all.
 BdRead projectBdRows(List<Object?> rows) {
   final evidenced = bdEvidencedFields(rows);
+  final carriesText = bdCarriesText(rows);
   final beads = <String, JsonMap>{};
   final dependencies = <BdDependency>[];
   for (final (index, row) in rows.indexed) {
@@ -109,7 +132,7 @@ BdRead projectBdRows(List<Object?> rows) {
       for (final key in bdScalarFields)
         if (row.containsKey(key)) key: row[key],
       for (final key in bdTextFields)
-        if (bdHolds(row[key]) || evidenced.contains(key)) key: row[key] ?? '',
+        if (carriesText) key: row[key] ?? '',
       for (final key in bdOptionalFields)
         if (bdHolds(row[key]) || evidenced.contains(key)) key: row[key],
     };
