@@ -1,5 +1,6 @@
 /// A client for the Gas City supervisor's HTTP API: its health and cities, a
-/// city's status, and a city's event log as pages and as a live stream.
+/// city's status, its sessions and pending interactions, and its event log as
+/// pages and as a live stream.
 ///
 /// It reads beads through nothing here: beads are reached over BDP, through
 /// `package:bdp/client.dart`. It runs on every platform, the web included.

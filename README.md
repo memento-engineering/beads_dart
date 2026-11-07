@@ -6,7 +6,7 @@ grid). Each package lives under `packages/` and is versioned and tagged on its o
 | Package | What it is | Status |
 | --- | --- | --- |
 | `gc_client` | The `GcClient` seam over a Gas City city: beads, convoys, mail, hook claims and sling, with a transport that runs `gc` and an in-process fake (`package:gc_client/testing.dart`). | 0.1.0, from houston |
-| `gc_api` | A client for the Gas City supervisor's HTTP API: health, cities, a city's status and its event log, paged and live. Every platform, the web included. | 0.1.0-dev.1 |
+| `gc_api` | A client for the Gas City supervisor's HTTP API: health, cities, a city's status, its sessions and pending interactions, and its event log, paged and live. Every platform, the web included. | 0.1.0-dev.1 |
 | `bdp` | The Bead Protocol (BDP v0) client (`package:bdp/client.dart`, every platform), its SQLite authority, and `serve_bd`, a BDP server over a bd store. | 0.1.0-dev.3, from memento-engineering/grid |
 | `beads_dart` | The predecessor bd client. | planned, from memento-engineering/the_grid |
 

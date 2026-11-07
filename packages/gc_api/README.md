@@ -14,6 +14,7 @@ final status = await city.status();
 final page = await city.events(limit: 50);       // newest first
 final older = await city.events(cursor: page.nextCursor);
 final live = city.follow(afterSeq: page.events.first.seq).listen(print);
+final waiting = await city.pending();
 ```
 
 ## What it covers
@@ -25,6 +26,10 @@ final live = city.follow(afterSeq: page.events.first.seq).listen(print);
 | `GcCity.status` | `GET /v0/city/{name}/status` |
 | `GcCity.events` | `GET /v0/city/{name}/events` |
 | `GcCity.follow` | `GET /v0/city/{name}/events/stream` |
+| `GcCity.sessions` | `GET /v0/city/{name}/sessions` |
+| `GcCity.session` | `GET /v0/city/{name}/session/{id}` |
+| `GcCity.pending` | `GET /v0/city/{name}/pending` |
+| `GcCity.sessionPending` | `GET /v0/city/{name}/session/{id}/pending` |
 
 Everything here is a GET, so a supervisor bound beyond loopback without `allow_mutations`
 serves all of it. Mutations come with the routes that need them, each carrying `X-GC-Request`.
