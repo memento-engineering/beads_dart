@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The bd authority reads the text fields bd omits when empty, `title`, `description`,
+  `design`, `acceptance_criteria` and `notes`, as one group (bdd-4vt,
+  `the-bd-authority-reads-a-text-field-bd-omits-as-empty-when-its-read-carries-text`,
+  accepted): when any row of a read holds any of them, every bead of the read carries all
+  five, a row that leaves one out holding it as empty text, so a store where no bead has a
+  design yet reads design as empty, not unknown. A read where no row holds a text field
+  carries none of them. `external_ref`, `await_id`, `close_reason` and `metadata` are still
+  carried only when some row of the same read holds a value for that field.
+
 ## 0.1.0-dev.3
 
 - `package:bdp/client.dart` is the client alone: everything `bdp.dart` exports but the
