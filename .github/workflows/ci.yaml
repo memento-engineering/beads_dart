@@ -1,6 +1,7 @@
 name: ci
 
 on:
+  merge_group:
   push:
     branches: [main]
   pull_request:
@@ -23,3 +24,17 @@ jobs:
             [ -d "$p/test" ] || continue
             (cd "$p" && dart test)
           done
+
+  # Stable required-check name for the ruleset and merge queue. Pin them to
+  # `ci-required` so renaming the jobs above never silently un-gates merges.
+  ci-required:
+    if: always()
+    needs: [dart]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs succeeded
+        run: |
+          if [ "${{ needs.dart.result }}" != "success" ]; then
+            echo "dart did not succeed: ${{ needs.dart.result }}"
+            exit 1
+          fi
