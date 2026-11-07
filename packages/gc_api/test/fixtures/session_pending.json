@@ -1,0 +1,1 @@
+{"supported":true,"pending":{"request_id":"req-7","kind":"tool-approval","prompt":"Allow Bash: dart test?","options":["allow","deny"],"metadata":{"tool":"Bash"}}}

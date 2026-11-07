@@ -50,11 +50,17 @@ extension type const JsonFields(Map<String, Object?> _json) {
   };
 
   /// [key] as an RFC 3339 instant.
-  DateTime instant(String key) {
-    final text = string(key);
-    return DateTime.tryParse(text) ??
-        (throw FormatException('$key is not an RFC 3339 instant: $text'));
-  }
+  DateTime instant(String key) => _instant(key, string(key));
+
+  /// [key] as an RFC 3339 instant, or null when it is absent or null.
+  DateTime? optionalInstant(String key) => switch (optionalString(key)) {
+    null => null,
+    final text => _instant(key, text),
+  };
+
+  DateTime _instant(String key, String text) =>
+      DateTime.tryParse(text) ??
+      (throw FormatException('$key is not an RFC 3339 instant: $text'));
 
   T _required<T>(String key, T? value) =>
       value ?? (throw FormatException('$key is missing'));
