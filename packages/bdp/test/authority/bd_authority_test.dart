@@ -114,23 +114,96 @@ void main() {
   });
 
   group('a read is projected', () {
-    test('a field bd omits when empty is carried only when some row of the '
-        'same read holds a value for it', () {
+    test('the text fields are carried as one group: a read whose rows hold '
+        'titles carries description, design, acceptance_criteria and notes '
+        'as empty text on every bead', () {
       final read = projectBdRows([
-        {'id': 't-1', 'title': 'one', 'notes': 'kept', 'dependency_count': 0},
+        {'id': 't-1', 'title': 'one', 'dependency_count': 0},
         {'id': 't-2', 'title': 'two'},
       ]);
-      expect(read.beads['t-2']!['notes'], '');
-      expect(read.beads['t-2']!.containsKey('description'), isFalse);
-      expect(read.beads['t-2']!.containsKey('metadata'), isFalse);
+      for (final id in ['t-1', 't-2']) {
+        for (final field in [
+          'description',
+          'design',
+          'acceptance_criteria',
+          'notes',
+        ]) {
+          expect(read.beads[id]![field], '', reason: '$id $field');
+        }
+      }
+      expect(read.beads['t-1']!['title'], 'one');
+      expect(read.beads['t-2']!['title'], 'two');
+    });
+
+    test('a read whose rows hold no text field carries none of the text '
+        'fields', () {
+      final read = projectBdRows([
+        {'id': 't-1'},
+        {'id': 't-2', 'status': 'open'},
+      ]);
+      for (final id in ['t-1', 't-2']) {
+        for (final field in bdTextFields) {
+          expect(
+            read.beads[id]!.containsKey(field),
+            isFalse,
+            reason: '$id $field',
+          );
+        }
+      }
+    });
+
+    test('every other field bd omits when empty is carried only when some '
+        'row of the same read holds a value for it, beside the carried text '
+        'fields', () {
+      final read = projectBdRows([
+        {'id': 't-1', 'title': 'one', 'dependency_count': 0},
+        {'id': 't-2', 'title': 'two'},
+      ]);
+      for (final id in ['t-1', 't-2']) {
+        final bead = read.beads[id]!;
+        for (final field in [
+          'external_ref',
+          'await_id',
+          'close_reason',
+          'metadata',
+        ]) {
+          expect(bead.containsKey(field), isFalse, reason: '$id $field');
+        }
+        expect(bead.containsKey('title'), isTrue);
+        expect(bead.containsKey('design'), isTrue);
+      }
       final evidenced = projectBdRows([
         {
           'id': 't-1',
+          'title': 'one',
           'metadata': {'k': 1},
+          'close_reason': 'done',
         },
-        {'id': 't-2'},
+        {'id': 't-2', 'title': 'two'},
       ]);
-      expect(evidenced.beads['t-2']!['metadata'], isEmpty);
+      final second = evidenced.beads['t-2']!;
+      expect(second['metadata'], isEmpty);
+      expect(second.containsKey('close_reason'), isTrue);
+      expect(second['close_reason'], isNull);
+      for (final id in ['t-1', 't-2']) {
+        expect(evidenced.beads[id]!.containsKey('external_ref'), isFalse);
+        expect(evidenced.beads[id]!.containsKey('await_id'), isFalse);
+      }
+    });
+
+    test('a text field a row holds is carried unchanged, and the other beads '
+        'of the read hold it as empty text', () {
+      final read = projectBdRows([
+        {'id': 't-1', 'title': 'one', 'design': 'kept design', 'notes': 'kept'},
+        {'id': 't-2', 'title': 'two'},
+        {'id': 't-3', 'design': 'only'},
+      ]);
+      expect(read.beads['t-1']!['design'], 'kept design');
+      expect(read.beads['t-1']!['notes'], 'kept');
+      expect(read.beads['t-2']!['design'], '');
+      expect(read.beads['t-2']!['notes'], '');
+      expect(read.beads['t-3']!['design'], 'only');
+      expect(read.beads['t-3']!['title'], '');
     });
 
     test('dependencies are carried as none only when bd counts none, and '
