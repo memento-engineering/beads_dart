@@ -12,14 +12,18 @@
 /// (`external_ref`, `await_id`, `close_reason` and `metadata`) is carried
 /// only when some row of the same read holds a value for that field
 /// ([bdEvidencedFields]); otherwise it is left out of every bead and reads
-/// unknown, never empty. The evidence is taken afresh on every read.
+/// unknown, never empty. `labels` are carried by their own evidence too, and
+/// when some row of the read holds a label, a row that leaves them out holds
+/// them as an empty list. The evidence is taken afresh on every read.
 /// Dependencies are carried by their own rule: a row that lists none carries
 /// none only when bd counts none.
 ///
 /// The grouped text fields are the ruling
 /// `beads_dart#the-bd-authority-reads-a-text-field-bd-omits-as-empty-when-its-read-carries-text`,
 /// which amends `grid#the-work-scope-authority-projects-bd-until-bd-speaks-bdp`
-/// D2 for the text fields only.
+/// D2 for the text fields only; the labels are the ruling
+/// `beads_dart#the-bd-authority-reads-labels-bd-omits-as-empty-when-its-read-carries-a-label`,
+/// which amends it for labels only.
 library;
 
 import '../json_text.dart';
@@ -70,7 +74,12 @@ const bdOptionalFields = ['external_ref', 'await_id', 'close_reason'];
 /// The fields `bd list --json` leaves out of a row when they are empty: the
 /// text fields among them follow [bdCarriesText], the rest
 /// [bdEvidencedFields].
-const bdOmittedWhenEmpty = {...bdTextFields, ...bdOptionalFields, 'metadata'};
+const bdOmittedWhenEmpty = {
+  ...bdTextFields,
+  ...bdOptionalFields,
+  'metadata',
+  'labels',
+};
 
 /// Whether [value], a field of a row, evidences the list path carries its
 /// field: anything but null and an empty text, map or list.
@@ -90,12 +99,13 @@ bool bdCarriesText(List<Object?> rows) => rows.any(
       bdTextFields.any((field) => bdHolds(row[field])),
 );
 
-/// The fields of [bdOptionalFields] and `metadata` that [rows], one read,
-/// evidence, each by its own values.
+/// The fields of [bdOptionalFields], `metadata` and `labels` that [rows],
+/// one read, evidence, each by its own values: `labels` when some row holds
+/// a non-empty list of them.
 Set<String> bdEvidencedFields(List<Object?> rows) => {
   for (final row in rows)
     if (row is Map<String, Object?>)
-      for (final field in const {...bdOptionalFields, 'metadata'})
+      for (final field in const {...bdOptionalFields, 'metadata', 'labels'})
         if (bdHolds(row[field])) field,
 };
 
@@ -112,8 +122,9 @@ typedef BdRead = ({
 /// [rows], one whole `bd list --json`, projected.
 ///
 /// Throws a [FormatException] naming the row's index for a row that is no
-/// object, names no bead, or lists a dependency that names no target or
-/// type: a read that cannot be carried whole is not carried at all.
+/// object, names no bead, holds labels that are not a list of non-empty
+/// text, or lists a dependency that names no target or type: a read that
+/// cannot be carried whole is not carried at all.
 BdRead projectBdRows(List<Object?> rows) {
   final evidenced = bdEvidencedFields(rows);
   final carriesText = bdCarriesText(rows);
@@ -141,6 +152,13 @@ BdRead projectBdRows(List<Object?> rows) {
         properties['metadata'] = metadata;
       }
     }
+    final labels = _labels(row['labels']);
+    if (labels == null) {
+      throw FormatException(
+        'bd list row $index holds labels that are not a list of non-empty text',
+      );
+    }
+    if (evidenced.contains('labels')) properties['labels'] = labels;
     final listed = row['dependencies'];
     if (listed == null) {
       if (row['dependency_count'] == 0) properties['dependencies'] = const [];
@@ -170,6 +188,16 @@ BdRead projectBdRows(List<Object?> rows) {
   }
   return (beads: beads, dependencies: dependencies);
 }
+
+/// The labels a row carries, in bd's order: an empty list for none, and
+/// nothing for a value that is not a list of non-empty text.
+List<String>? _labels(Object? labels) => switch (labels) {
+  null => <String>[],
+  final List<Object?> list
+      when list.every((label) => label is String && label.isNotEmpty) =>
+    list.cast<String>().toList(),
+  _ => null,
+};
 
 /// The metadata a row carries: an empty map for none, and nothing for a map
 /// holding a number a Scope cannot store, so one bead's metadata never

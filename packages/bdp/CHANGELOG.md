@@ -10,6 +10,12 @@
   design yet reads design as empty, not unknown. A read where no row holds a text field
   carries none of them. `external_ref`, `await_id`, `close_reason` and `metadata` are still
   carried only when some row of the same read holds a value for that field.
+- The bd authority carries a bead's `labels` (bdd-7nl,
+  `the-bd-authority-reads-labels-bd-omits-as-empty-when-its-read-carries-a-label`,
+  proposed): when any row of a read holds a label, every bead of the read carries `labels`,
+  a row that leaves them out holding an empty list. A read where no row holds a label
+  carries none, so labels read unknown. A `labels` value that is not a list of non-empty
+  text refuses the read.
 
 ## 0.1.0-dev.3
 

@@ -245,6 +245,87 @@ void main() {
       );
       expect(() => projectBdRows(['t-1']), throwsFormatException);
     });
+
+    test('a read where some row holds labels carries labels on every bead, '
+        'a row without them as an empty list', () {
+      final read = projectBdRows([
+        {
+          'id': 't-1',
+          'labels': ['grid.approved', 'provides:cap'],
+        },
+        {'id': 't-2'},
+        {'id': 't-3', 'labels': <Object?>[]},
+        {'id': 't-4', 'labels': null},
+      ]);
+      expect(read.beads['t-1']!['labels'], ['grid.approved', 'provides:cap']);
+      expect(read.beads['t-1']!['labels'], isA<List<String>>());
+      for (final id in ['t-2', 't-3', 't-4']) {
+        final bead = read.beads[id]!;
+        expect(bead.containsKey('labels'), isTrue, reason: id);
+        expect(bead['labels'], isA<List<Object?>>(), reason: id);
+        expect(bead['labels'], isEmpty, reason: id);
+      }
+    });
+
+    test('a read where no row holds a label carries labels on no bead', () {
+      final read = projectBdRows([
+        {'id': 't-1', 'title': 'one'},
+        {'id': 't-2', 'labels': <Object?>[]},
+      ]);
+      for (final id in ['t-1', 't-2']) {
+        expect(read.beads[id]!.containsKey('labels'), isFalse, reason: id);
+      }
+    });
+
+    test('a row whose labels are not a list of non-empty text refuses the '
+        'whole read, naming its index', () {
+      final malformed = <Object?>[
+        'x',
+        {'a': 'b'},
+        [1],
+        [''],
+        ['ok', null],
+      ];
+      for (final labels in malformed) {
+        for (final first in <Map<String, Object?>>[
+          {
+            'id': 't-1',
+            'labels': ['ok'],
+          },
+          {'id': 't-1'},
+        ]) {
+          expect(
+            () => projectBdRows([
+              first,
+              {'id': 't-2', 'labels': labels},
+            ]),
+            throwsA(
+              isA<FormatException>().having(
+                (error) => error.message,
+                'message',
+                'bd list row 1 holds labels that are not a list of non-empty '
+                    'text',
+              ),
+            ),
+            reason: '$labels after $first',
+          );
+        }
+      }
+    });
+
+    test('the labels evidence is taken afresh on every read', () {
+      final first = projectBdRows([
+        {
+          'id': 't-1',
+          'labels': ['a'],
+        },
+      ]);
+      expect(first.beads['t-1']!['labels'], ['a']);
+      final second = projectBdRows([
+        {'id': 't-1'},
+      ]);
+      expect(second.beads['t-1']!.containsKey('labels'), isFalse);
+    });
   });
 
   group('the bd authority reads', () {
