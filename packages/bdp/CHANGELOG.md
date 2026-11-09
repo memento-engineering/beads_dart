@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-dev.4
 
 - The bd authority reads the text fields bd omits when empty, `title`, `description`,
   `design`, `acceptance_criteria` and `notes`, as one group (bdd-4vt,
