@@ -13,7 +13,8 @@ register:
   obsoletes: []
   updates: []
   obsoleted-by: null
-  updated-by: []
+  updated-by:
+    - gc-clients-bead-carries-the-dependency-rows-gc-bd-show-prints
   bead: "bdd-kxn"
   legacy-id: null
 ---
