@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-dev.5
 
 - The bd authority appends labels (bdd-h12,
   `the-bd-authority-writes-a-provides-label-through-bd-ship`, proposed): an ordinary label
