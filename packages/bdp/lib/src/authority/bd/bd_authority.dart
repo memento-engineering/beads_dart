@@ -885,7 +885,12 @@ final class BdScopeAuthority
     }
     final BdUpdatePlan plan;
     try {
-      plan = planBdUpdate(operation, id, record['properties']! as JsonMap);
+      plan = planBdUpdate(
+        operation,
+        id,
+        record['properties']! as JsonMap,
+        served: _served,
+      );
     } on BdWriteRefused catch (refusal) {
       throw _Failed(refusal.problem);
     }
