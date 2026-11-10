@@ -15,7 +15,8 @@ register:
   updates:
     - "grid#the-work-scope-authority-projects-bd-until-bd-speaks-bdp"
   obsoleted-by: null
-  updated-by: []
+  updated-by:
+    - "the-bd-authority-writes-a-provides-label-through-bd-ship"
   bead: "bdd-7nl"
   legacy-id: null
 ---

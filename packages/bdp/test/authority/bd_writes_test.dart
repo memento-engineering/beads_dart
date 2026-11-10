@@ -180,6 +180,61 @@ void main() {
     expect(jsonEncode(await humanRow(id)), jsonEncode(before));
   });
 
+  // bd 1.3.2 runs no ship in proxied-server mode, the mode every store here
+  // is made in: on a closed bead the label adds land in the human's own list
+  // and the ship comes back as bd's own refusal, carried unchanged.
+  test('a closed human bead gains an ordinary label and the export label '
+      'through bd label add, seen in the human\'s own list, and the ship bd '
+      'refuses in proxied-server mode is the write\'s refusal', () async {
+    final o = await open();
+    if (o == null) return;
+    final id = await humanCreate(store!, 'shipped');
+    await human(store!, ['close', '--reason=done', '--json', '--', id]);
+    await o.authority.refresh();
+    final receipt = await update(o.authority, id, [
+      {'op': 'add', 'path': '/labels/-', 'value': 'ready'},
+      {'op': 'add', 'path': '/labels/-', 'value': 'provides:$id'},
+    ], key: 'ship');
+    expect(o.bd.writes, [
+      ['label', 'add', '--json', '--', id, 'ready'],
+      ['label', 'add', '--json', '--', id, 'export:$id'],
+      ['ship', '--json', '--', id],
+    ]);
+    expect(receipt.status, 'failed', reason: '${receipt.json}');
+    expect(receipt.problem!['title'], 'bd refused the write');
+    expect(receipt.problem!['detail'], contains('proxied-server'));
+    final labels = (await humanRow(id))['labels']! as List<Object?>;
+    expect(labels, containsAll(['ready', 'export:$id']));
+    expect(labels, isNot(contains('provides:$id')));
+  });
+
+  test('a provides label on an open human bead is refused with bd\'s reason, '
+      'never forced, and leaves no provides label', () async {
+    final o = await open();
+    if (o == null) return;
+    final id = await humanCreate(store!, 'unshipped');
+    await o.authority.refresh();
+    final receipt = await update(o.authority, id, [
+      {'op': 'add', 'path': '/labels/-', 'value': 'provides:$id'},
+    ], key: 'refused-ship');
+    expect(receipt.status, 'failed', reason: '${receipt.json}');
+    expect(receipt.problem!['title'], 'bd refused the write');
+    expect(
+      receipt.problem!['detail'],
+      isA<String>().having((detail) => detail.isNotEmpty, 'non-empty', isTrue),
+    );
+    for (final call in o.bd.calls) {
+      expect(call, isNot(contains('--force')), reason: '$call');
+    }
+    final labels = [...?(await humanRow(id))['labels'] as List<Object?>?];
+    expect(
+      labels.whereType<String>().where(
+        (label) => label.startsWith('provides:'),
+      ),
+      isEmpty,
+    );
+  });
+
   test('a change of status to closed goes through bd close', () async {
     final o = await open();
     if (o == null) return;

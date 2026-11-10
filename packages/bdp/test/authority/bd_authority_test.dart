@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'package:bdp/bd.dart';
 import 'package:bdp/bdp.dart';
 import 'package:bdp/src/authority/bd/bd_rows.dart';
+import 'package:bdp/src/authority/bd/bd_writes.dart'
+    show bdNoWriteTitle, bdRejectedTitle, bdUnconfirmedTitle;
 import 'package:test/test.dart';
 
 import '../support/fake_bd.dart';
@@ -1511,6 +1513,226 @@ void main() {
         {'op': 'add', 'path': '/metadata/k', 'value': 'v'},
       ]);
       expect(receipt.status, 'completed');
+    });
+
+    /// The labels the authority serves on [id] now.
+    Object? servedLabels(String id) =>
+        (authority.resource(_bead(id)).body['properties']! as Json)['labels'];
+
+    for (final carried in [false, true]) {
+      test('a label appended at /labels/- is one bd label add, the label after '
+          'the id after --, confirmed by a read holding it, when the read '
+          '${carried ? 'carried labels' : 'carried none'}', () async {
+        if (carried) {
+          bd.row('t-1')['labels'] = ['held'];
+          await authority.refresh();
+        }
+        expect(servedLabels('t-1'), carried ? ['held'] : isNull);
+        final receipt = await update([
+          {'op': 'add', 'path': '/labels/-', 'value': 'ready'},
+        ]);
+        expect(receipt.status, 'completed', reason: '${receipt.json}');
+        expectSchema(receipt.json, 'mutationReceipt');
+        expect(bd.writes, [
+          ['label', 'add', '--json', '--', 't-1', 'ready'],
+        ]);
+        expect(bd.row('t-1')['labels'], [if (carried) 'held', 'ready']);
+        expect(servedLabels('t-1'), contains('ready'));
+      });
+    }
+
+    test('a provides label on a closed bead is its export label, then bd '
+        'ship, confirmed by a read holding both', () async {
+      bd.row('t-1')['status'] = 'closed';
+      await authority.refresh();
+      final receipt = await update([
+        {'op': 'add', 'path': '/labels/-', 'value': 'provides:x-1'},
+      ]);
+      expect(receipt.status, 'completed', reason: '${receipt.json}');
+      expect(bd.writes, [
+        ['label', 'add', '--json', '--', 't-1', 'export:x-1'],
+        ['ship', '--json', '--', 'x-1'],
+      ]);
+      expect(bd.row('t-1')['labels'], ['export:x-1', 'provides:x-1']);
+      expect(servedLabels('t-1'), ['export:x-1', 'provides:x-1']);
+    });
+
+    test('a provides label on a closed bead that holds its export label is '
+        'bd ship alone', () async {
+      bd.row('t-1')
+        ..['status'] = 'closed'
+        ..['labels'] = ['export:x-1'];
+      await authority.refresh();
+      final receipt = await update([
+        {'op': 'add', 'path': '/labels/-', 'value': 'provides:x-1'},
+      ]);
+      expect(receipt.status, 'completed', reason: '${receipt.json}');
+      expect(bd.writes, [
+        ['ship', '--json', '--', 'x-1'],
+      ]);
+      expect(servedLabels('t-1'), ['export:x-1', 'provides:x-1']);
+    });
+
+    test("a provides label on an open bead fails with bd's own refusal of "
+        'the ship, and no call forces it', () async {
+      final receipt = await update([
+        {'op': 'add', 'path': '/labels/-', 'value': 'provides:x-1'},
+      ]);
+      const words = 'issue t-1 is not closed (status: open)';
+      expect(receipt.problem!['code'], 'validation-failed');
+      expect(receipt.problem!['title'], bdRejectedTitle);
+      expect(receipt.problem!['detail'], words);
+      final failure = failureOf(receipt);
+      expect(failure.kind, BdWriteFailure.rejected);
+      expect(failure.message, words);
+      expect(bd.writes, [
+        ['label', 'add', '--json', '--', 't-1', 'export:x-1'],
+        ['ship', '--json', '--', 'x-1'],
+      ]);
+      for (final call in bd.calls) {
+        expect(call, isNot(contains('--force')), reason: '$call');
+      }
+      expect(bd.row('t-1')['labels'], ['export:x-1']);
+    });
+
+    test('one change that closes a bead and appends a provides label adds '
+        'the export label, then closes, then ships', () async {
+      final receipt = await update([
+        {'op': 'replace', 'path': '/status', 'value': 'closed'},
+        {'op': 'add', 'path': '/labels/-', 'value': 'provides:x-1'},
+      ]);
+      expect(receipt.status, 'completed', reason: '${receipt.json}');
+      expect(bd.writes, [
+        ['label', 'add', '--json', '--', 't-1', 'export:x-1'],
+        ['update', '--status=closed', '--json', '--', 't-1'],
+        ['ship', '--json', '--', 'x-1'],
+      ]);
+      expect(bd.row('t-1')['status'], 'closed');
+      expect(bd.row('t-1')['labels'], ['export:x-1', 'provides:x-1']);
+    });
+
+    for (final (name, change, carried) in <(String, List<Json>, bool)>[
+      (
+        'a removed label',
+        [
+          {'op': 'remove', 'path': '/labels/0'},
+        ],
+        true,
+      ),
+      (
+        'a replaced label',
+        [
+          {'op': 'replace', 'path': '/labels/0', 'value': 'other'},
+        ],
+        true,
+      ),
+      (
+        'a whole labels list lacking a held label',
+        [
+          {
+            'op': 'replace',
+            'path': '/labels',
+            'value': ['other'],
+          },
+        ],
+        true,
+      ),
+      (
+        'an empty label',
+        [
+          {'op': 'add', 'path': '/labels/-', 'value': ''},
+        ],
+        true,
+      ),
+      (
+        'a label holding a comma',
+        [
+          {'op': 'add', 'path': '/labels/-', 'value': 'a,b'},
+        ],
+        true,
+      ),
+      (
+        'a provides label naming no capability',
+        [
+          {'op': 'add', 'path': '/labels/-', 'value': 'provides:'},
+        ],
+        true,
+      ),
+      (
+        'a whole labels list over a read that carries none',
+        [
+          {
+            'op': 'add',
+            'path': '/labels',
+            'value': ['ready'],
+          },
+        ],
+        false,
+      ),
+      (
+        'a provides label whose export label another bead holds',
+        [
+          {'op': 'add', 'path': '/labels/-', 'value': 'provides:taken'},
+        ],
+        true,
+      ),
+    ]) {
+      test('$name is refused before any bd call, naming labels', () async {
+        bd.row('t-1')['status'] = 'closed';
+        if (carried) {
+          bd.row('t-1')['labels'] = ['held'];
+          bd.add(
+            't-2',
+            also: {
+              'labels': ['export:taken'],
+            },
+          );
+        }
+        await authority.refresh();
+        final receipt = await update(change);
+        expect(receipt.status, 'failed');
+        expectSchema(receipt.json, 'mutationReceipt');
+        expect(receipt.problem!['code'], 'validation-failed');
+        expect(receipt.problem!['title'], bdNoWriteTitle);
+        expect(receipt.problem!['detail'], contains('labels'));
+        expect(bd.writes, isEmpty);
+      });
+    }
+
+    test('a moved label is refused before any bd call: the request admits '
+        'no move', () async {
+      bd.row('t-1')['labels'] = ['held'];
+      await authority.refresh();
+      await expectLater(
+        update([
+          {'op': 'move', 'from': '/labels/0', 'path': '/labels/-'},
+        ]),
+        throwsA(_problem('malformed-request')),
+      );
+      expect(bd.writes, isEmpty);
+    });
+
+    test('a label append bd answers with success and no read shows fails '
+        'unconfirmed, naming labels', () async {
+      final slow = await _open(
+        bd,
+        interval: const Duration(milliseconds: 5),
+        within: const Duration(milliseconds: 30),
+      );
+      addTearDown(slow.close);
+      bd.intercept = (arguments) => arguments.first == 'label'
+          ? const BdOutput(exitCode: 0, stdout: '[]')
+          : null;
+      final receipt = await slow.mutate('update-bead-properties', {
+        'bead': _bead('t-1'),
+        'change': [
+          {'op': 'add', 'path': '/labels/-', 'value': 'ready'},
+        ],
+      }, idempotencyKey: 'unconfirmed');
+      expect(receipt.problem!['title'], bdUnconfirmedTitle);
+      final failure = failureOf(receipt);
+      expect(failure.kind, BdWriteFailure.unconfirmed);
+      expect(failure.message, contains('labels'));
     });
   });
 }

@@ -10,6 +10,11 @@
 /// two calls, the create carrying an external ref and then the update that
 /// merges the metadata, so a bead whose merge failed stays findable by that
 /// ref.
+///
+/// Labels are appended, one `bd label add` each, and never dropped or
+/// replaced. bd reserves the `provides:` prefix to its ship verb, so a
+/// `provides:<cap>` label is written by the label `export:<cap>` and then
+/// `bd ship <cap>`, which bd makes only on a closed bead; no call forces it.
 library;
 
 import 'dart:convert';
@@ -239,15 +244,31 @@ typedef BdCreatePlan = ({
 /// `bd gate resolve` for a gate, `bd close` when it carries a
 /// `close_reason`, and `bd update --status=closed` otherwise.
 ///
+/// A labels change only appends: each label the bead does not hold is one
+/// `bd label add`, and a `provides:<cap>` label is the label `export:<cap>`,
+/// unless the bead holds it, and then `bd ship <cap>`, which labels the
+/// closed bead holding `export:<cap>` with `provides:<cap>`. The label adds
+/// run first, then the update carrying flags, then the status call, then
+/// every ship, so one change can close a bead and ship it. [served] holds
+/// the served properties of the store's beads by bd id, by which a ship
+/// another bead would answer is refused. A read that carries no labels
+/// says nothing of them: a change at one index or at `/labels/-` appends
+/// onto an empty list, and the write is confirmed only by a read holding
+/// every label it appended.
+///
 /// Throws [BdWriteRefused] for a change bd has no write verb for, before any
 /// call: any other change naming a whole free-text field, a whole metadata
 /// map or the whole properties, a notes change that does not extend the
-/// current notes, and any property no flag writes.
+/// current notes, a labels change that drops or replaces a label, replaces
+/// the whole labels a read does not carry, or appends a label that is
+/// empty, holds a comma or is a `provides:` naming no capability or one
+/// another served bead exports, and any property no flag writes.
 BdUpdatePlan planBdUpdate(
   UpdateProperties operation,
   String id,
-  JsonMap current,
-) {
+  JsonMap current, {
+  Map<String, JsonMap> served = const {},
+}) {
   for (final change in operation.change) {
     final path = change['path']! as String;
     if (path.isEmpty || path == '/metadata') {
@@ -276,6 +297,29 @@ BdUpdatePlan planBdUpdate(
       );
     }
   }
+  for (final change in operation.change) {
+    final path = change['path']! as String;
+    final op = change['op'];
+    final atLabels = _underLabels(path);
+    final from = change['from'];
+    if ((atLabels && (op == 'remove' || op == 'move')) ||
+        (op == 'replace' && path.startsWith('/labels/')) ||
+        ((op == 'move' || op == 'copy') &&
+            from is String &&
+            _underLabels(from))) {
+      throw _invalid(operation, '/change', _labelsDropped);
+    }
+    if (path == '/labels' &&
+        (op == 'add' || op == 'replace') &&
+        !current.containsKey('labels')) {
+      throw _invalid(
+        operation,
+        '/change',
+        'labels are unknown to this read, so a labels change appends at '
+            '/labels/- one label at a time',
+      );
+    }
+  }
   final named = {
     for (final change in operation.change)
       if (change['op'] != 'remove') ?_metadataEntry(change['path']! as String),
@@ -288,6 +332,14 @@ BdUpdatePlan planBdUpdate(
     // A read that carries no metadata says nothing of its keys; a per-key
     // change merges into whatever bd holds.
     base['metadata'] = <String, Object?>{};
+  }
+  if (!base.containsKey('labels') &&
+      operation.change.any(
+        (change) => (change['path']! as String).startsWith('/labels/'),
+      )) {
+    // A read that carries no labels says nothing of them; bd label add only
+    // adds, so an appended label lands beside whatever bd holds.
+    base['labels'] = <Object?>[];
   }
   final JsonMap next;
   try {
@@ -310,6 +362,8 @@ BdUpdatePlan planBdUpdate(
   final gate = base['issue_type'] == 'gate';
   final flags = <String>[];
   final checks = <BdDiffering>[];
+  final labelCalls = <List<String>>[];
+  final shipCalls = <List<String>>[];
   List<String>? status;
   final keys = {...base.keys, ...next.keys}.toList()..sort();
   for (final key in keys) {
@@ -444,13 +498,90 @@ BdUpdatePlan planBdUpdate(
             (served) => [if (served['close_reason'] != after) 'close_reason'],
           );
         }
+      case 'labels':
+        if (after is! List<Object?> ||
+            after.any(
+              (label) =>
+                  label is! String || label.isEmpty || label.contains(','),
+            )) {
+          throw _invalid(
+            operation,
+            '/change',
+            'labels: each label is a non-empty text holding no comma',
+          );
+        }
+        final held = {
+          if (base['labels'] case final List<Object?> labels)
+            ...labels.whereType<String>(),
+        };
+        final labels = after.cast<String>().toSet();
+        if (!labels.containsAll(held)) {
+          throw _invalid(operation, '/change', _labelsDropped);
+        }
+        final added = <String>{};
+        final expected = <String>{};
+        void add(String label) {
+          if (added.add(label)) {
+            labelCalls.add(['label', 'add', '--json', '--', id, label]);
+          }
+          expected.add(label);
+        }
+
+        for (final label in labels.difference(held)) {
+          if (!label.startsWith(_provides)) {
+            add(label);
+            continue;
+          }
+          final capability = label.substring(_provides.length);
+          if (capability.isEmpty) {
+            throw _invalid(
+              operation,
+              '/change',
+              'labels: a provides label names its capability after provides:',
+            );
+          }
+          final export = 'export:$capability';
+          for (final MapEntry(key: other, value: properties)
+              in served.entries) {
+            if (other != id &&
+                properties['labels'] is List<Object?> &&
+                (properties['labels']! as List<Object?>).contains(export)) {
+              throw _invalid(
+                operation,
+                '/change',
+                'labels: bd ship $capability ships the bead holding $export, '
+                    'and $other holds it too',
+              );
+            }
+          }
+          if (held.contains(export)) {
+            expected.add(export);
+          } else {
+            add(export);
+          }
+          shipCalls.add(['ship', '--json', '--', capability]);
+          expected.add(label);
+        }
+        if (expected.isNotEmpty) {
+          checks.add(
+            (served) => [
+              if (!switch (served['labels']) {
+                final List<Object?> labels => expected.every(labels.contains),
+                _ => false,
+              })
+                'labels',
+            ],
+          );
+        }
       default:
         throw _invalid(operation, '/change', 'bd has no write verb for $key');
     }
   }
   final calls = [
+    ...labelCalls,
     if (flags.isNotEmpty) ['update', ...flags, '--json', '--', id],
     ?status,
+    ...shipCalls,
   ];
   _refuseNul(operation, calls);
   return (
@@ -458,6 +589,18 @@ BdUpdatePlan planBdUpdate(
     differing: (served) => [for (final check in checks) ...check(served)],
   );
 }
+
+/// The prefix bd reserves to its ship verb.
+const _provides = 'provides:';
+
+/// Why a labels change that would drop or replace a held label is refused.
+const _labelsDropped =
+    'a labels change appends to the labels the bead holds and never drops or '
+    'replaces one';
+
+/// Whether the JSON Pointer [path] is the labels list or lies under it.
+bool _underLabels(String path) =>
+    path == '/labels' || path.startsWith('/labels/');
 
 /// The guarded text update of the bead [id] when [operation]'s change is
 /// exactly one `add` or `replace` at each of [bdGuardedTextFields]; null

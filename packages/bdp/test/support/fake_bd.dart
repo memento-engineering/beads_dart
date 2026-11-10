@@ -1,7 +1,7 @@
 // A bd that answers from memory, for tests that need no bd on the PATH. It
 // keeps rows as `bd list --json` prints them, answers the verbs the bd
-// authority calls, its gate verbs among them, the way bd 1.3 prints them,
-// and records every call.
+// authority calls, its gate, label and ship verbs among them, the way bd 1.3
+// prints them, and records every call.
 import 'dart:convert';
 
 import 'package:bdp/bd.dart';
@@ -71,8 +71,66 @@ final class FakeBd implements BdCli {
       'update' => _update(arguments),
       'close' => _close(arguments),
       'gate' => _gate(arguments),
+      'label' => _label(arguments),
+      'ship' => _ship(arguments),
       _ => _error('unknown command "${arguments.first}"'),
     };
+  }
+
+  /// `bd label add`, refusing the `provides:` prefix bd reserves to its ship
+  /// verb, in bd 1.3.2's own words.
+  BdOutput _label(List<String> arguments) {
+    if (arguments.elementAtOrNull(1) != 'add') {
+      return _error('unknown label command');
+    }
+    final id = _subject(arguments);
+    final label = arguments.last;
+    final found = rows.where((row) => row['id'] == id).firstOrNull;
+    if (found == null) return _error('issue not found: $id');
+    if (label.startsWith('provides:')) {
+      return _error(
+        "'provides:' labels are reserved for cross-project capabilities. "
+        "Hint: use 'bd ship ${label.substring('provides:'.length)}' instead",
+      );
+    }
+    _addLabel(found, label);
+    return _ok([
+      {'status': 'added', 'issue_id': id, 'label': label},
+    ]);
+  }
+
+  /// `bd ship`: labels the closed bead holding `export:<cap>` with
+  /// `provides:<cap>`, an open one only under `--force`.
+  BdOutput _ship(List<String> arguments) {
+    final capability = _subject(arguments);
+    final holder = rows
+        .where(
+          (row) => [
+            ...?row['labels'] as List<Object?>?,
+          ].contains('export:$capability'),
+        )
+        .firstOrNull;
+    if (holder == null) {
+      return _error('no issue found with export:$capability label');
+    }
+    if (holder['status'] != 'closed' && !arguments.contains('--force')) {
+      return _error(
+        'issue ${holder['id']} is not closed (status: ${holder['status']})',
+      );
+    }
+    _addLabel(holder, 'provides:$capability');
+    return _ok({
+      'status': 'shipped',
+      'capability': capability,
+      'issue_id': holder['id'],
+    });
+  }
+
+  void _addLabel(Row row, String label) {
+    final labels = [...?row['labels'] as List<Object?>?];
+    if (!labels.contains(label)) labels.add(label);
+    row['labels'] = labels;
+    _touch(row);
   }
 
   static BdOutput _ok(Object? json) =>

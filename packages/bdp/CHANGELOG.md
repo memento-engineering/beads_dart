@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The bd authority appends labels (bdd-h12,
+  `the-bd-authority-writes-a-provides-label-through-bd-ship`, proposed): an ordinary label
+  through `bd label add`, a `provides:<cap>` label through `export:<cap>` and
+  `bd ship <cap>`, never forced, bd's refusal on an open bead carried unchanged; a change
+  that drops or replaces a label is refused before any call.
+
 ## 0.1.0-dev.4
 
 - The bd authority reads the text fields bd omits when empty, `title`, `description`,
