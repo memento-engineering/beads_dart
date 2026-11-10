@@ -1,0 +1,33 @@
+[
+  {
+    "id": "fx-blocked",
+    "title": "A blocked bead",
+    "status": "open",
+    "issue_type": "task",
+    "metadata": {
+      "gc.kind": "work"
+    },
+    "dependencies": [
+      {
+        "id": "fx-gate",
+        "title": "An open blocker",
+        "status": "open",
+        "issue_type": "task",
+        "metadata": {},
+        "dependency_type": "blocks"
+      },
+      {
+        "id": "fx-done",
+        "title": "A closed blocker",
+        "status": "closed",
+        "issue_type": "task",
+        "closed_at": "2026-10-25T10:05:00Z",
+        "metadata": {},
+        "dependency_type": "blocks"
+      }
+    ],
+    "dependents": null,
+    "dependency_count": 2,
+    "dependent_count": 0
+  }
+]

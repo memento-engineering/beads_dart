@@ -46,6 +46,20 @@ void main() {
       });
     });
 
+    test('serves the dependency rows gc bd show prints', () async {
+      final bead = await gc.showBead('fx-blocked');
+      expect(bead.id, 'fx-blocked');
+      expect(bead.status, 'open');
+      expect(bead.dependencies, const [
+        BeadDependency(id: 'fx-gate', status: 'open', type: 'blocks'),
+        BeadDependency(id: 'fx-done', status: 'closed', type: 'blocks'),
+      ]);
+    });
+
+    test('a bead gc prints no dependencies for has none', () async {
+      expect((await gc.showBead('fx-step')).dependencies, isEmpty);
+    });
+
     test('fails on a missing bead as the bash fake does', () {
       expect(
         gc.showBead('fx-missing'),
