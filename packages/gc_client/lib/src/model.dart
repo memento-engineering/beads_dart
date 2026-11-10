@@ -15,16 +15,23 @@ final class Bead {
     this.startedAt,
     this.closedAt,
     this.metadata = const {},
+    this.dependencies = const [],
   });
 
   /// Reads one bead object as `gc bd show --json` (inside its array),
   /// `gc bd list --json` and `gc bd search --json` print it; null when [json]
   /// is not an object with a non-empty string `id`.
+  ///
+  /// It reads each row of `dependencies` as [BeadDependency.fromJson] does
+  /// and keeps the rows it accepts, in gc's order. A `dependencies` value
+  /// that is absent, null, not a list or holds malformed rows never makes it
+  /// null: the bead has the rows it could read, or none.
   static Bead? fromJson(Object? json) {
     if (json is! Map<String, Object?>) return null;
     final id = json['id'];
     if (id is! String || id.isEmpty) return null;
     final metadata = json['metadata'];
+    final dependencies = json['dependencies'];
     return Bead(
       id: id,
       title: _string(json['title']),
@@ -41,6 +48,10 @@ final class Bead {
           for (final MapEntry(:key, :value) in metadata.entries)
             if (value != null) key: value is String ? value : jsonEncode(value),
       },
+      dependencies: [
+        if (dependencies is List<Object?>)
+          for (final row in dependencies) ?BeadDependency.fromJson(row),
+      ],
     );
   }
 
@@ -77,6 +88,73 @@ final class Bead {
   /// The metadata, each value as text: a string as itself, any other value
   /// as its JSON text (`1`, `true`, `["a","b"]`). A `null` value is left out.
   final Map<String, String> metadata;
+
+  /// The beads this bead depends on (`dependencies`), in the order gc prints
+  /// them; empty when gc prints none, prints null or prints no list.
+  ///
+  /// Carried transitionally, until houston reads beads through BDP, and the
+  /// only dependency state a bead reads: `dependents`, `dependency_count` and
+  /// `dependent_count` are not read.
+  final List<BeadDependency> dependencies;
+}
+
+/// One row of a bead's `dependencies` as `gc bd show --json` or
+/// `gc bd list --json` prints it: the bead depended on, its status and the
+/// dependency's type. Carried transitionally, until houston reads beads
+/// through BDP.
+final class BeadDependency {
+  /// Creates the dependency on [id]; a field the store does not show is
+  /// empty.
+  const BeadDependency({required this.id, this.status = '', this.type = ''});
+
+  /// Reads one `dependencies` row; null when [json] is not an object with a
+  /// non-empty string `id` or `depends_on_id`.
+  ///
+  /// `gc bd show` prints the whole depended-on bead plus `dependency_type`:
+  /// [id] is its `id`, [status] its `status` and [type] its
+  /// `dependency_type`. `gc bd list` prints an edge row with no status:
+  /// [id] is its `depends_on_id`, [type] its `type` and [status] is empty.
+  /// A row carrying both `id` and `depends_on_id` is read as the show shape,
+  /// since only show rows carry `id`.
+  static BeadDependency? fromJson(Object? json) {
+    if (json is! Map<String, Object?>) return null;
+    final id = json['id'];
+    if (id is String && id.isNotEmpty) {
+      return BeadDependency(
+        id: id,
+        status: _string(json['status']),
+        type: _string(json['dependency_type']),
+      );
+    }
+    final dependsOn = json['depends_on_id'];
+    if (dependsOn is String && dependsOn.isNotEmpty) {
+      return BeadDependency(id: dependsOn, type: _string(json['type']));
+    }
+    return null;
+  }
+
+  /// The id of the bead depended on.
+  final String id;
+
+  /// The depended-on bead's status as `gc bd show` prints it; empty when the
+  /// store does not show it, as `gc bd list` does not.
+  final String status;
+
+  /// The dependency's type, such as `blocks`.
+  final String type;
+
+  @override
+  bool operator ==(Object other) =>
+      other is BeadDependency &&
+      other.id == id &&
+      other.status == status &&
+      other.type == type;
+
+  @override
+  int get hashCode => Object.hash(id, status, type);
+
+  @override
+  String toString() => 'BeadDependency($id, status: $status, type: $type)';
 }
 
 /// A convoy as `gc convoy status --json` shows it: its id and its children.
