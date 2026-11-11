@@ -1,7 +1,9 @@
 // A bd that answers from memory, for tests that need no bd on the PATH. It
 // keeps rows as `bd list --json` prints them, answers the verbs the bd
 // authority calls, its gate, label and ship verbs among them, the way bd 1.3
-// prints them, and records every call.
+// prints them, and records every call. With [FakeBd.journal] on it keeps bd's
+// events journal as bd 1.3.4 does: a row a test edits through `row` journals
+// nothing, as a `bd sql` write would not.
 import 'dart:convert';
 
 import 'package:bdp/bd.dart';
@@ -27,11 +29,68 @@ final class FakeBd implements BdCli {
 
   var _next = 0;
 
-  /// The calls that write: every one but `list`, `config` and `version`.
+  /// Whether the events journal is on: `bd config get events-journal`
+  /// answers it, and while it holds every mutation the fake makes appends
+  /// one record to [events].
+  bool journal = false;
+
+  /// The journal's retained records, each `{seq, ts, op, issue_id}`, in seq
+  /// order.
+  final List<Row> events = [];
+
+  var _seq = 0;
+  var _floor = 1;
+  var _stamp = 0;
+
+  /// The calls that write: every one but `list`, `config`, `events` and
+  /// `version`.
   List<List<String>> get writes => [
     for (final call in calls)
-      if (!const {'list', 'config', 'version'}.contains(call.first)) call,
+      if (!const {'list', 'config', 'events', 'version'}.contains(call.first))
+        call,
   ];
+
+  /// The `bd events tail` calls made so far.
+  int get tails => calls.where((call) => call.first == 'events').length;
+
+  /// The whole reads taken so far: each one's `bd list`.
+  int get lists =>
+      calls.where((call) => call.join(' ') == bdListArguments.join(' ')).length;
+
+  /// Drops the journal's records below [floor], as a prune would.
+  void pruneBelow(int floor) {
+    events.removeWhere((event) => (event['seq']! as int) < floor);
+    _floor = floor;
+  }
+
+  /// Clears the journal and counts its seq from 1 again, as another replica
+  /// would.
+  void restartJournal() {
+    events.clear();
+    _seq = 0;
+    _floor = 1;
+  }
+
+  /// Journals [op] of [id] while [journal] holds.
+  void _journal(String op, String id) {
+    if (!journal) return;
+    events.add({
+      'seq': ++_seq,
+      'ts': DateTime.utc(
+        2026,
+        10,
+        27,
+      ).add(Duration(seconds: ++_stamp)).toIso8601String(),
+      'op': op,
+      'issue_id': id,
+    });
+  }
+
+  /// Removes the bead [id] as another actor would.
+  void remove(String id) {
+    rows.removeWhere((row) => row['id'] == id);
+    _journal('delete', id);
+  }
 
   /// Adds a bead as another actor would, answering its row.
   Row add(String id, {String title = 'A bead', Map<String, Object?>? also}) {
@@ -48,6 +107,7 @@ final class FakeBd implements BdCli {
     rows
       ..add(row)
       ..sort((a, b) => (a['id']! as String).compareTo(b['id']! as String));
+    _journal('create', id);
     return row;
   }
 
@@ -65,7 +125,8 @@ final class FakeBd implements BdCli {
     if (intercept?.call(arguments) case final answer?) return answer;
     return switch (arguments.first) {
       'version' => BdOutput(exitCode: 0, stdout: '$versionLine\n'),
-      'config' => _ok(config),
+      'config' => _config(arguments),
+      'events' => _events(arguments),
       'list' => _list(arguments),
       'create' => _create(arguments),
       'update' => _update(arguments),
@@ -131,6 +192,44 @@ final class FakeBd implements BdCli {
     if (!labels.contains(label)) labels.add(label);
     row['labels'] = labels;
     _touch(row);
+  }
+
+  /// `bd config get events-journal --json` as bd 1.3.4 prints it, the value
+  /// as text; every other `config` call prints [config].
+  BdOutput _config(List<String> arguments) {
+    if (arguments.elementAtOrNull(1) == 'get' &&
+        arguments.elementAtOrNull(2) == 'events-journal') {
+      return BdOutput(
+        exitCode: 0,
+        stdout:
+            '${const JsonEncoder.withIndent('  ').convert({'key': 'events-journal', 'location': 'config.yaml', 'schema_version': 1, 'value': '$journal'})}\n',
+      );
+    }
+    return _ok(config);
+  }
+
+  /// `bd events tail --since=<n> --json`: the retained records past n, one
+  /// JSON object per line; below the retained window, bd 1.3.4's refusal.
+  BdOutput _events(List<String> arguments) {
+    final since = _flag(arguments, 'since');
+    if (arguments.elementAtOrNull(1) != 'tail' || since == null) {
+      return _error('unknown events command');
+    }
+    final after = int.parse(since);
+    if (after < _floor - 1) {
+      return BdOutput(
+        exitCode: 1,
+        stdout:
+            '${const JsonEncoder.withIndent('  ').convert({'code': 'events_journal_truncated', 'error': 'events journal truncated: checkpoint $after is below the retained window [$_floor..$_seq]', 'floor': _floor, 'head': _seq, 'schema_version': 1, 'since': after})}\n',
+      );
+    }
+    return BdOutput(
+      exitCode: 0,
+      stdout: [
+        for (final event in events)
+          if ((event['seq']! as int) > after) '${jsonEncode(event)}\n',
+      ].join(),
+    );
   }
 
   static BdOutput _ok(Object? json) =>
@@ -294,6 +393,9 @@ final class FakeBd implements BdCli {
 
   var _tick = 0;
 
-  void _touch(Row row) => row['updated_at'] =
-      '2026-10-26T12:${(++_tick).toString().padLeft(2, '0')}:00Z';
+  void _touch(Row row) {
+    row['updated_at'] =
+        '2026-10-26T12:${(++_tick).toString().padLeft(2, '0')}:00Z';
+    _journal('update', row['id']! as String);
+  }
 }
