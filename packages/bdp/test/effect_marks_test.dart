@@ -259,6 +259,9 @@ final _servicePure = {
     'maximumPageItems',
     'maximumOperations',
     'servedOperations',
+    'safetyFactor',
+    'safetyInterval',
+    'followsJournal',
   ])
     'BdScopeAuthority.$read',
   // What a bd server and a bd CLI were made with, how a failed call is

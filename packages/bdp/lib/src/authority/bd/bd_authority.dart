@@ -26,8 +26,18 @@ import 'bd_writes.dart';
 /// private in-memory [ScopeAuthority], the projection, so pages, cursors,
 /// positions, checkpoints and the changefeed are that authority's. A read
 /// that changes something is written into it as one batch, which is one
-/// change group dated by the instant the read returned. The store is read
-/// again every [interval] after each read ends. While the last read could
+/// change group dated by the instant the read returned. The store is polled
+/// every [interval] after each poll ends, in one of two modes chosen at
+/// [open]. When the store's events journal is off, each poll is a whole
+/// read. When it is on, each poll reads the journal past the last record
+/// seen, and a whole read is taken only when the journal shows a record
+/// past it, when its answer cannot be trusted (the call fails, a seq does
+/// not rise, or the record last seen no longer reads back with its `ts`),
+/// whereupon the journal's head is taken again first, or when no whole read
+/// has begun for [safetyInterval]; before that safety read the setting is
+/// read again, and a journal turned off drops the authority to polling with
+/// whole reads. The journal only signals a change: every projection comes
+/// from a whole read. While the last read could
 /// not be taken whole, those reads answer `temporarily-unavailable` naming
 /// why, until the next whole read; discovery, the Operation Directory, the
 /// Type inventory, Type Descriptors and receipts are still served.
@@ -61,11 +71,13 @@ final class BdScopeAuthority
     required this.changeBound,
   });
 
-  /// Opens the store [bd] runs over as the Scope [scope]: takes the first
-  /// whole read, and then reads again every [interval] after each read ends,
-  /// until [close]. Every bd call the authority makes is a whole read's
-  /// list, its control query when the list is empty, or a write's calls;
-  /// it never runs `bd version`.
+  /// Opens the store [bd] runs over as the Scope [scope]: reads whether its
+  /// events journal is on, takes the journal's head when it is, takes the
+  /// first whole read, and then polls every [interval] after each poll ends,
+  /// until [close]. Every bd call the authority makes is the `config get
+  /// events-journal` read of that setting, an `events tail` read of the
+  /// journal, a whole read's list, its control query when the list is
+  /// empty, or a write's calls; it never runs `bd version`.
   ///
   /// A first read that cannot be taken leaves the Scope unavailable until a
   /// later one is. Throws an [ArgumentError] when [scope] is not a canonical
@@ -115,7 +127,13 @@ final class BdScopeAuthority
       receiptRetention: receiptRetention,
       changeBound: changes,
     );
-    await authority.refresh();
+    await authority._serial(() async {
+      if (await authority._journalOn()) {
+        authority._journal = true;
+        await authority._baseline();
+      }
+      await authority._readWhole();
+    });
     authority._schedule();
     return authority;
   }
@@ -124,8 +142,22 @@ final class BdScopeAuthority
   final ScopeAuthority _projection;
   final _ReadClock _clock;
 
-  /// How long after each read ends the store is read again.
+  /// How long after each poll ends the next begins: a whole read of the
+  /// store when polling, a read of its events journal when following it.
   final Duration interval;
+
+  /// How many [interval]s may pass in journal mode before a whole read is
+  /// taken though the journal shows no change.
+  static const safetyFactor = 30;
+
+  /// The longest a whole read waits in journal mode: [interval] times
+  /// [safetyFactor].
+  Duration get safetyInterval => interval * safetyFactor;
+
+  /// Whether the authority follows the store's events journal, reading the
+  /// store whole only when it signals a change; false when it polls with
+  /// whole reads.
+  bool get followsJournal => _journal;
 
   /// How long the whole reads that confirm a write wait between them.
   final Duration confirmInterval;
@@ -169,6 +201,19 @@ final class BdScopeAuthority
 
   bool _closed = false;
   Timer? _timer;
+
+  /// Whether the authority follows the store's events journal.
+  bool _journal = false;
+
+  /// The last journal seq seen, 0 when the journal held none at the
+  /// baseline, and null when no baseline holds.
+  int? _seq;
+
+  /// The `ts` of the journal record at [_seq], null when [_seq] is 0.
+  String? _anchor;
+
+  /// When the last whole read began, on the authority's clock.
+  DateTime? _lastWhole;
   Future<void> _tail = Future.value();
 
   /// The properties of each served bead, by bd id.
@@ -233,8 +278,150 @@ final class BdScopeAuthority
 
   @effect
   Future<void> _pollThenSchedule() async {
-    await refresh();
+    await _serial(_tick);
     _schedule();
+  }
+
+  /// One poll: a whole read when polling, and in journal mode a whole read
+  /// only when the journal shows a record past [_seq], cannot be trusted, or
+  /// no whole read has begun for [safetyInterval].
+  @effect
+  Future<void> _tick() async {
+    if (_closed) return;
+    if (!_journal) return _readWhole();
+    final seq = _seq;
+    if (seq == null) return _rebaseline();
+    final (:records, floor: _) = await _journalTail(seq > 0 ? seq - 1 : 0);
+    if (records == null) return _rebaseline();
+    if (seq > 0) {
+      final first = records.firstOrNull;
+      if (first == null || first.seq != seq || first.ts != _anchor) {
+        return _rebaseline();
+      }
+    }
+    final fresh = seq > 0 ? records.skip(1) : records;
+    if (fresh.isNotEmpty) {
+      _seq = fresh.last.seq;
+      _anchor = fresh.last.ts;
+      return _readWhole();
+    }
+    if (_lastWhole case final last?
+        when _clock.now().difference(last) < safetyInterval) {
+      return;
+    }
+    if (!await _journalOn()) {
+      _journal = false;
+      _seq = null;
+      _anchor = null;
+    }
+    return _readWhole();
+  }
+
+  /// Takes a fresh baseline of the journal, then a whole read.
+  @effect
+  Future<void> _rebaseline() async {
+    await _baseline();
+    await _readWhole();
+  }
+
+  /// Whether `bd config get events-journal` answers that the store's events
+  /// journal is on; false when the call fails.
+  @effect
+  Future<bool> _journalOn() async {
+    final BdOutput output;
+    try {
+      output = await _bd.run(const [
+        'config',
+        'get',
+        'events-journal',
+        '--json',
+      ]);
+    } on BdFailure {
+      return false;
+    }
+    return output.exitCode == 0 && _on(output.stdout);
+  }
+
+  /// Whether [printed] says true: as the JSON boolean or text true, an
+  /// object whose `value` is either, or the plain text true.
+  static bool _on(String printed) {
+    final Object? json;
+    try {
+      json = jsonDecode(printed);
+    } on FormatException {
+      return printed.trim() == 'true';
+    }
+    return switch (json) {
+      true || 'true' || {'value': true || 'true'} => true,
+      _ => false,
+    };
+  }
+
+  /// Sets [_seq] and [_anchor] from the journal's head: its last record, or
+  /// seq 0 and no anchor when it holds none. A head below a truncated
+  /// journal's retained window is read from that window's floor. Any other
+  /// failure leaves no baseline.
+  @effect
+  Future<void> _baseline() async {
+    _seq = null;
+    _anchor = null;
+    var answer = await _journalTail(0);
+    if (answer case (records: null, :final floor?)) {
+      answer = await _journalTail(floor - 1);
+    }
+    final records = answer.records;
+    if (records == null) return;
+    _seq = records.lastOrNull?.seq ?? 0;
+    _anchor = records.lastOrNull?.ts;
+  }
+
+  /// What `bd events tail --since=[since]` answered: its records, in seq
+  /// order, or null with the floor of the retained window when bd refused
+  /// [since] as below it. Records are null, and the floor too, when the
+  /// call fails otherwise, a line is not a record with an integer `seq` and
+  /// a text `ts`, or the seqs do not strictly rise.
+  @effect
+  Future<({List<_Record>? records, int? floor})> _journalTail(int since) async {
+    const untrusted = (records: null, floor: null);
+    final BdOutput output;
+    try {
+      output = await _bd.run(['events', 'tail', '--since=$since', '--json']);
+    } on BdFailure {
+      return untrusted;
+    }
+    if (output.exitCode != 0) {
+      final Object? refusal;
+      try {
+        refusal = jsonDecode(output.stdout);
+      } on FormatException {
+        return untrusted;
+      }
+      return switch (refusal) {
+        {'code': 'events_journal_truncated', 'floor': final int floor}
+            when floor > 0 =>
+          (records: null, floor: floor),
+        _ => untrusted,
+      };
+    }
+    final records = <_Record>[];
+    for (final line in const LineSplitter().convert(output.stdout)) {
+      if (line.trim().isEmpty) continue;
+      final Object? json;
+      try {
+        json = jsonDecode(line);
+      } on FormatException {
+        return untrusted;
+      }
+      if (json case {
+        'seq': final int seq,
+        'ts': final String ts,
+      } when records.isEmpty || seq > records.last.seq) {
+        records.add((seq: seq, ts: ts));
+      } else {
+        return untrusted;
+      }
+    }
+    return (records: records, floor: null);
   }
 
   /// Runs [task] after every task queued before it.
@@ -267,6 +454,7 @@ final class BdScopeAuthority
   @effect
   Future<void> _readWhole() async {
     if (_closed) return;
+    _lastWhole = _clock.now();
     final refusal = await _take();
     if (_closed) return;
     _unavailable = refusal;
@@ -1150,6 +1338,9 @@ final class BdScopeAuthority
 
 /// One served Link's Type, source and target.
 typedef _Link = ({String type, String source, String target});
+
+/// One record of bd's events journal: its position and its timestamp.
+typedef _Record = ({int seq, String ts});
 
 /// An admitted operation that failed: its receipt carries [problem].
 /// [runsAgain] marks a failure a retry under the same key runs again.
