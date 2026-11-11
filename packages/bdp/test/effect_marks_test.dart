@@ -259,12 +259,16 @@ final _servicePure = {
     'maximumPageItems',
     'maximumOperations',
     'servedOperations',
+    'safetyFactor',
+    'safetyInterval',
+    'followsJournal',
   ])
     'BdScopeAuthority.$read',
   // What a bd server and a bd CLI were made with, how a failed call is
   // explained from what it printed, and how a failed write is read from its
   // receipt's problem.
   'BdStoreServer.url', 'BdStoreServer.bdVersion', 'BdStoreServer.interval',
+  'BdStoreServer.followsJournal',
   'BdProcessCli.executable', 'BdProcessCli.workspace', 'BdProcessCli.actor',
   'BdProcessCli.bound', 'BdProcessCli.environment',
   'BdProcessCli.environmentAllowlist', 'bdExplain', 'bdWriteFailureOf',

@@ -9,6 +9,7 @@ library;
 import 'package:test/test.dart';
 
 import 'authority/bd_authority_test.dart' as authority_bd_authority_test;
+import 'authority/bd_journal_test.dart' as authority_bd_journal_test;
 import 'authority/bd_server_test.dart' as authority_bd_server_test;
 import 'authority/bd_writes_test.dart' as authority_bd_writes_test;
 import 'authority/changefeed_test.dart' as authority_changefeed_test;
@@ -34,6 +35,11 @@ import 'test_entry_test.dart' as test_entry_test;
 
 void main() {
   group('authority/bd_authority_test.dart', authority_bd_authority_test.main);
+  group(
+    'authority/bd_journal_test.dart',
+    authority_bd_journal_test.main,
+    timeout: Timeout(Duration(minutes: 3)),
+  );
   group(
     'authority/bd_server_test.dart',
     authority_bd_server_test.main,

@@ -357,9 +357,16 @@ void main() {
 
     tearDown(() => authority.close());
 
-    test('reads the store only by whole lists, and never runs bd version', () {
-      expect(bd.calls, isNotEmpty);
-      expect(bd.calls, everyElement(bdListArguments));
+    test('reads the store only by whole lists and one config read of '
+        'events-journal, and never runs bd version', () {
+      const setting = ['config', 'get', 'events-journal', '--json'];
+      expect(bd.calls.where((call) => call.join(' ') == setting.join(' ')), [
+        setting,
+      ]);
+      expect(
+        bd.calls.where((call) => call.join(' ') != setting.join(' ')),
+        allOf(isNotEmpty, everyElement(bdListArguments)),
+      );
       expect(bd.calls.where((call) => call.first == 'version'), isEmpty);
     });
 
@@ -1733,6 +1740,281 @@ void main() {
       final failure = failureOf(receipt);
       expect(failure.kind, BdWriteFailure.unconfirmed);
       expect(failure.message, contains('labels'));
+    });
+  });
+
+  group("the bd authority follows bd's events journal", () {
+    const interval = Duration(milliseconds: 5);
+    const setting = ['config', 'get', 'events-journal', '--json'];
+    late FakeBd bd;
+    late TestClock clock;
+
+    setUp(() {
+      clock = TestClock();
+      bd = FakeBd()..journal = true;
+      bd
+        ..add('t-1', title: 'first')
+        ..add('t-2', title: 'second');
+    });
+
+    Future<BdScopeAuthority> follow() async {
+      final authority = await _open(bd, interval: interval, clock: clock);
+      addTearDown(authority.close);
+      return authority;
+    }
+
+    /// Waits, at most five seconds, until [done] holds.
+    Future<void> until(bool Function() done, String what) async {
+      final waited = Stopwatch()..start();
+      while (!done()) {
+        if (waited.elapsed > const Duration(seconds: 5)) {
+          fail('waited five seconds for $what');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+
+    /// Waits until the fake has answered [n] more `bd events tail` calls.
+    Future<void> tails(int n) {
+      final target = bd.tails + n;
+      return until(() => bd.tails >= target, '$n journal ticks');
+    }
+
+    List<String> lastTail() =>
+        bd.calls.lastWhere((call) => call.first == 'events');
+
+    int settingReads() =>
+        bd.calls.where((call) => call.join(' ') == setting.join(' ')).length;
+
+    /// Fails the next `bd events tail` with [answer], then passes calls on.
+    void failNextTail(BdOutput answer) {
+      var spent = false;
+      bd.intercept = (arguments) {
+        if (spent || arguments.first != 'events') return null;
+        spent = true;
+        return answer;
+      };
+    }
+
+    /// Expects one whole read past [lists] after an untrusted tick, a
+    /// baseline at the journal's head, and quiet ticks that read nothing.
+    Future<void> expectRebaselined(int lists) async {
+      await until(() => bd.lists == lists + 1, 'the whole read');
+      final head = bd.events.last['seq']! as int;
+      await tails(3);
+      expect(bd.lists, lists + 1);
+      expect(lastTail(), ['events', 'tail', '--since=${head - 1}', '--json']);
+    }
+
+    test('quiet ticks read nothing past the whole read open takes, one '
+        'events tail each', () async {
+      final authority = await follow();
+      expect(authority.followsJournal, isTrue);
+      expect(authority.safetyInterval, interval * 30);
+      expect(bd.lists, 1);
+      final opened = bd.calls.length;
+      await tails(5);
+      expect(bd.lists, 1);
+      final ticks = bd.calls.skip(opened).toList();
+      expect(ticks.length, greaterThanOrEqualTo(5));
+      expect(ticks, everyElement(['events', 'tail', '--since=1', '--json']));
+    });
+
+    test('a bead another actor adds is read whole once on the next tick and '
+        'reaches the changefeed, and the tick after reads nothing', () async {
+      final authority = await follow();
+      await tails(2);
+      final mark = _head(authority);
+      bd.add('t-3', title: 'third');
+      await until(
+        () => _groupsAfter(authority, mark).isNotEmpty,
+        'the change group',
+      );
+      expect(bd.lists, 2);
+      final group = _groupsAfter(authority, mark).single;
+      expect(
+        (group['events']! as List<Object?>).cast<Json>().map(
+          (event) => (event['type'], event['subject']),
+        ),
+        [('created', _bead('t-3'))],
+      );
+      await tails(3);
+      expect(bd.lists, 2);
+      expect(lastTail(), ['events', 'tail', '--since=2', '--json']);
+    });
+
+    for (final (name, configure) in [
+      ('is off', (FakeBd bd) => bd.journal = false),
+      (
+        'cannot be read',
+        (FakeBd bd) =>
+            bd.intercept = (arguments) =>
+                arguments.first == 'config' && arguments[1] == 'get'
+                ? const BdOutput(exitCode: 1, stdout: '{"error": "no config"}')
+                : null,
+      ),
+    ]) {
+      test('a store whose journal setting $name is polled with whole reads, '
+          'and its journal is never read', () async {
+        configure(bd);
+        final authority = await follow();
+        expect(authority.followsJournal, isFalse);
+        await until(() => bd.lists >= 4, 'four whole reads');
+        expect(bd.tails, 0);
+        expect(settingReads(), 1);
+      });
+    }
+
+    for (final (name, answer) in [
+      (
+        'exits non-zero',
+        const BdOutput(exitCode: 1, stdout: '{"error": "journal unreadable"}'),
+      ),
+      (
+        'prints a line that is no JSON',
+        const BdOutput(exitCode: 0, stdout: 'x\n'),
+      ),
+      (
+        'prints a record with no integer seq',
+        const BdOutput(exitCode: 0, stdout: '{"seq": "2", "ts": "t"}\n'),
+      ),
+      (
+        'prints a record with no text ts',
+        const BdOutput(exitCode: 0, stdout: '{"seq": 2}\n'),
+      ),
+    ]) {
+      test('a tick whose events tail $name reads whole once and takes the '
+          "journal's head again", () async {
+        await follow();
+        await tails(1);
+        failNextTail(answer);
+        await expectRebaselined(1);
+      });
+    }
+
+    test('a journal whose head fell below the last seq seen is read whole '
+        'once, and its head taken again', () async {
+      final authority = await follow();
+      await tails(1);
+      final mark = _head(authority);
+      bd
+        ..restartJournal()
+        ..add('t-3');
+      await expectRebaselined(1);
+      expect(bd.events.last['seq'], 1);
+      expect(_groupsAfter(authority, mark), hasLength(1));
+    });
+
+    test('a journal whose record at the last seq seen has another ts is read '
+        'whole once, and its head taken again', () async {
+      await follow();
+      await tails(1);
+      bd
+        ..restartJournal()
+        ..add('t-3')
+        ..add('t-4');
+      expect(bd.events.last['seq'], 2);
+      await expectRebaselined(1);
+    });
+
+    test('a tail whose seqs do not rise is read whole once, and the '
+        "journal's head taken again", () async {
+      await follow();
+      await tails(1);
+      final last = jsonEncode(bd.events.last);
+      failNextTail(BdOutput(exitCode: 0, stdout: '$last\n$last\n'));
+      await expectRebaselined(1);
+    });
+
+    test(
+      "a baseline bd refuses as below the journal's retained window takes "
+      'the head from its floor, and the authority follows the journal',
+      () async {
+        bd
+          ..add('t-3')
+          ..pruneBelow(3);
+        final authority = await follow();
+        expect(authority.followsJournal, isTrue);
+        expect(
+          bd.calls.where((call) => call.first == 'events').take(2).toList(),
+          [
+            ['events', 'tail', '--since=0', '--json'],
+            ['events', 'tail', '--since=2', '--json'],
+          ],
+        );
+        await tails(3);
+        expect(bd.lists, 1);
+        expect(lastTail(), ['events', 'tail', '--since=2', '--json']);
+      },
+    );
+
+    test('a safety whole read runs once the clock reaches the safety interval '
+        'past the last whole read, and carries a change the journal did not '
+        'record', () async {
+      final authority = await follow();
+      await tails(1);
+      final mark = _head(authority);
+      bd.row('t-1')['title'] = 'edited by bd sql';
+      clock.now = clock.now.add(
+        authority.safetyInterval - const Duration(milliseconds: 1),
+      );
+      await tails(3);
+      expect(bd.lists, 1);
+      expect(_groupsAfter(authority, mark), isEmpty);
+      clock.now = clock.now.add(const Duration(milliseconds: 1));
+      await until(() => bd.lists == 2, 'the safety read');
+      expect(settingReads(), 2);
+      await until(
+        () => _groupsAfter(authority, mark).isNotEmpty,
+        'the change group',
+      );
+      final properties =
+          authority.resource(_bead('t-1')).body['properties']! as Json;
+      expect(properties['title'], 'edited by bd sql');
+      expect(authority.followsJournal, isTrue);
+      await tails(3);
+      expect(bd.lists, 2);
+    });
+
+    test('a safety read that finds the journal turned off drops to polling '
+        'with whole reads', () async {
+      final authority = await follow();
+      await tails(1);
+      bd.journal = false;
+      clock.now = clock.now.add(authority.safetyInterval);
+      await until(() => bd.lists == 2, 'the safety read');
+      await until(() => !authority.followsJournal, 'polling mode');
+      final tailed = bd.tails;
+      await until(() => bd.lists >= 5, 'whole reads on every tick');
+      expect(bd.tails, tailed);
+      expect(settingReads(), 2);
+    });
+
+    test('a write still reads back by its own whole reads, and makes no '
+        'events or config call among its writes', () async {
+      final authority = await follow();
+      await tails(1);
+      final receipt = await authority.mutate('update-bead-properties', {
+        'bead': _bead('t-1'),
+        'change': [
+          {'op': 'replace', 'path': '/status', 'value': 'in_progress'},
+        ],
+      }, idempotencyKey: 'k1');
+      expect(receipt.status, 'completed', reason: '${receipt.json}');
+      final written = bd.calls.indexWhere((call) => call.first == 'update');
+      expect(
+        bd.calls.skip(written + 1).takeWhile((call) => call.first != 'events'),
+        anyElement(bdListArguments),
+      );
+      expect(bd.writes, [
+        ['update', '--status=in_progress', '--json', '--', 't-1'],
+      ]);
+      expect(
+        bd.writes.where(
+          (call) => call.first == 'events' || call.first == 'config',
+        ),
+        isEmpty,
+      );
     });
   });
 }

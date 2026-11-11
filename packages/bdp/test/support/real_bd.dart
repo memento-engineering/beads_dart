@@ -214,10 +214,12 @@ final class RecordingCli implements BdCli {
   /// Answers a call before [inner] does; null passes it on.
   BdOutput? Function(List<String> arguments)? intercept;
 
-  /// The calls that write: every one but `list`, `config` and `version`.
+  /// The calls that write: every one but `list`, `config`, `events` and
+  /// `version`.
   List<List<String>> get writes => [
     for (final call in calls)
-      if (!const {'list', 'config', 'version'}.contains(call.first)) call,
+      if (!const {'list', 'config', 'events', 'version'}.contains(call.first))
+        call,
   ];
 
   @override

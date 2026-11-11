@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The bd authority follows bd's events journal when it is on, reading the
+  store whole only when the journal shows a change, cannot be trusted, or
+  thirty intervals have passed; it polls with whole reads otherwise; serve_bd's
+  second line names the mode (bdd-cqj).
+
 ## 0.1.0-dev.5
 
 - The bd authority appends labels (bdd-h12,

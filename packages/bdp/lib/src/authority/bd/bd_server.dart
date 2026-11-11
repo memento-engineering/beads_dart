@@ -26,8 +26,13 @@ final class BdStoreServer {
   /// The line `bd version` printed as the server started.
   final String bdVersion;
 
-  /// How long after each read of the store ends it is read again.
+  /// How long after each poll of the store ends the next begins.
   Duration get interval => _authority.interval;
+
+  /// Whether the server follows the store's events journal, reading the
+  /// store whole only when it signals a change; false when it polls with
+  /// whole reads.
+  bool get followsJournal => _authority.followsJournal;
 
   /// Stops answering requests, then closes the authority.
   @effect
@@ -41,11 +46,14 @@ final class BdStoreServer {
 /// HTTP at `127.0.0.1:[port]` (0 picks a free one) as the Scope [scope], or
 /// `http://127.0.0.1:<bound port>/` when [scope] is null.
 ///
-/// It runs [executable] as [actor] through a [BdProcessCli], reads the store
+/// It runs [executable] as [actor] through a [BdProcessCli], polls the store
 /// every [interval], and, once it answers, [say]s three lines in order: the
-/// `bd version` line read once as it started, the polling interval, and the
-/// service description's URL. Throws a [BdFailure] when bd does not report
-/// its version.
+/// `bd version` line read once as it started, the mode it polls in, and the
+/// service description's URL. The mode is `polling every n ms`, n being
+/// [interval], when it reads the store whole on every poll, and, when it
+/// follows the store's events journal, `reading the events journal every n
+/// ms, and the store whole at least every m ms`, m being
+/// [BdScopeAuthority.safetyInterval]. Throws a [BdFailure] when bd does not report its version.
 @effect
 Future<BdStoreServer> serveBdStore({
   required String store,
@@ -78,7 +86,13 @@ Future<BdStoreServer> serveBdStore({
   }
   shelf_io.serveRequests(server, authorityHandler(authority));
   say?.call('bd: $bdVersion');
-  say?.call('polling every ${interval.inMilliseconds} ms');
+  say?.call(
+    authority.followsJournal
+        ? 'reading the events journal every ${interval.inMilliseconds} ms, '
+              'and the store whole at least every '
+              '${authority.safetyInterval.inMilliseconds} ms'
+        : 'polling every ${interval.inMilliseconds} ms',
+  );
   say?.call('service description: ${url}bdp.json');
   return BdStoreServer._(server, authority, url: url, bdVersion: bdVersion);
 }

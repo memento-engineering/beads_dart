@@ -18,12 +18,20 @@ import '../support/real_bd.dart';
 void main() {
   late StampedStore? store;
   late String? absence;
+  late StampedStore? journaled;
 
   setUpAll(() async {
     (store, absence) = await StampedStore.create();
+    (journaled, _) = await StampedStore.create();
+    if (journaled case final on?) {
+      await human(on, ['config', 'set', 'events-journal', 'true']);
+    }
   });
 
-  tearDownAll(() async => store?.delete());
+  tearDownAll(() async {
+    await store?.delete();
+    await journaled?.delete();
+  });
 
   test('the program compiles with dart compile exe, prints its usage for '
       '--help, and exits 64 with it on an unknown flag', () async {
@@ -80,6 +88,7 @@ void main() {
     ]);
     expect(server.bdVersion, store!.version);
     expect(server.interval, const Duration(milliseconds: 250));
+    expect(server.followsJournal, isFalse);
     final landing = await http.get(root);
     expect(landing.statusCode, 204);
     expect(landing.headers['link'], contains('rel="service-desc"'));
@@ -89,5 +98,25 @@ void main() {
         (jsonDecode(discovery.body) as Map<String, Object?>)['limits']!
             as Map<String, Object?>;
     expect(limits['transaction'], {'operations': 1});
+  });
+
+  test('over a store whose events journal is on, says it reads the journal '
+      'every interval and the store whole at least every thirty', () async {
+    if (await stampedCli(journaled, absence) == null) return;
+    final said = <String>[];
+    final server = await serveBdStore(
+      store: journaled!.directory.path,
+      interval: const Duration(milliseconds: 250),
+      actor: 'bdp-test',
+      say: said.add,
+    );
+    addTearDown(server.close);
+    expect(server.followsJournal, isTrue);
+    expect(said, [
+      'bd: ${journaled!.version}',
+      'reading the events journal every 250 ms, and the store whole at '
+          'least every 7500 ms',
+      'service description: ${server.url}bdp.json',
+    ]);
   });
 }

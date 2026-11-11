@@ -407,8 +407,21 @@ not be taken, those reads answer `temporarily-unavailable` naming why, and
 discovery, the Operation Directory, the Type inventory, Type Descriptors and
 receipts are still served; a live `watch` stays open. A read that changed
 something is one change group, dated by the instant its list returned; an
-unchanged read commits none. The store is read again `interval` (2 s by
-default) after each read ends, and before and after each write.
+unchanged read commits none. The store is read before and after each write,
+and polled `interval` (2 s by default) after each poll ends, in one of two
+modes `open` chooses from `bd config get events-journal` (`followsJournal`).
+With the store's events journal off, or that setting unreadable, each poll is
+a whole read. With it on, each poll runs `bd events tail` past the last
+record seen, and the store is read whole only when the journal shows a newer
+record, when the journal cannot be trusted (the call fails, its seqs do not
+rise, or the record last seen no longer reads back with the same `ts`, as
+after a prune or on another replica), whereupon the journal's head is taken
+again before the read, or when no whole read has begun for `safetyInterval`
+(`interval` times `safetyFactor`, 30), which catches what the journal does not
+record, such as `bd sql` writes and rows a `bd dolt pull` merges. Before that
+safety read the setting is read again, and a journal turned off drops the
+authority to polling with whole reads. The journal is only a signal: every
+projection comes from a whole read.
 
 Each bead is served at `<scope>beads/<id>` (the id percent-encoded as a URI
 component) under one Type, `<scope>types/bead`, with these properties, under
@@ -548,6 +561,13 @@ three lines, in order, and serves until SIGINT or SIGTERM:
 bd: <the bd version line, read once as it starts>
 polling every <n> ms
 service description: <scope>bdp.json
+```
+
+The second line names the mode: `polling every <n> ms` over a store whose
+events journal is off, and over one whose journal is on:
+
+```
+reading the events journal every <n> ms, and the store whole at least every <n × 30> ms
 ```
 
 Discovery advertises pages of 50 items by default and 200 at most; a larger
