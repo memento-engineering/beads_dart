@@ -1,7 +1,8 @@
 // Writes through the bd authority against a real bd store in proxied-server
 // mode: each is seen both through the Scope and by a human's own bd list,
-// beside what another actor wrote. Skipped, naming why, where no bd runs or
-// the store's version stamp does not name it.
+// beside what another actor wrote, once over a store whose events journal
+// is off and once over one whose journal is on. Skipped, naming why, where
+// no bd runs or the store's version stamp does not name it.
 @Timeout(Duration(minutes: 3))
 library;
 
@@ -17,12 +18,22 @@ import '../support/scope.dart';
 typedef _Opened = ({BdScopeAuthority authority, RecordingCli bd});
 
 void main() {
+  group('journal off', () => _writes(journal: false));
+  group('journal on', () => _writes(journal: true));
+}
+
+/// Every write test, over a store of its own whose events journal is on
+/// when [journal] holds.
+void _writes({required bool journal}) {
   late StampedStore? store;
   late String? absence;
   _Opened? opened;
 
   setUpAll(() async {
     (store, absence) = await StampedStore.create();
+    if (journal && store != null) {
+      await human(store!, ['config', 'set', 'events-journal', 'true']);
+    }
   });
 
   tearDownAll(() async => store?.delete());
@@ -42,7 +53,9 @@ void main() {
       scope: scope,
       interval: const Duration(milliseconds: 100),
     );
-    return opened = (authority: authority, bd: bd);
+    opened = (authority: authority, bd: bd);
+    expect(authority.followsJournal, journal);
+    return opened;
   }
 
   String url(String id) => '${scope}beads/${Uri.encodeComponent(id)}';
