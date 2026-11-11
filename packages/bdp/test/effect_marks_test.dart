@@ -268,6 +268,7 @@ final _servicePure = {
   // explained from what it printed, and how a failed write is read from its
   // receipt's problem.
   'BdStoreServer.url', 'BdStoreServer.bdVersion', 'BdStoreServer.interval',
+  'BdStoreServer.followsJournal',
   'BdProcessCli.executable', 'BdProcessCli.workspace', 'BdProcessCli.actor',
   'BdProcessCli.bound', 'BdProcessCli.environment',
   'BdProcessCli.environmentAllowlist', 'bdExplain', 'bdWriteFailureOf',
